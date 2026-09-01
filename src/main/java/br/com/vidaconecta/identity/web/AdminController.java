@@ -4,10 +4,13 @@ import br.com.vidaconecta.identity.api.CurrentUser;
 import br.com.vidaconecta.identity.application.AdminStaffService;
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -46,5 +49,12 @@ public class AdminController {
 	@GetMapping("/doctors")
 	public List<ManagedDoctorResponse> listDoctors() {
 		return adminStaffService.listDoctors();
+	}
+
+	@PatchMapping("/doctors/{doctorId}/enabled")
+	public ManagedDoctorResponse setDoctorEnabled(
+			@PathVariable UUID doctorId,
+			@Valid @RequestBody DoctorEnabledRequest request) {
+		return adminStaffService.setDoctorEnabled(doctorId, request.enabled());
 	}
 }

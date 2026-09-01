@@ -1,8 +1,10 @@
 package br.com.vidaconecta;
 
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -166,5 +168,65 @@ class IdentityTests extends AbstractIntegrationTest {
 		mockMvc.perform(get("/api/v1/admin/doctors").header("Authorization", bearer(adminJwt)))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$[*].email", hasItem(doctorEmail)));
+	}
+
+	@Test
+	void shouldDisableDoctorHidingFromPublicListingAndBlockingLogin() throws Exception {
+		String suffix = uniqueSuffix();
+		String adminToken = registerAdmin("admin.status." + suffix + "@vidaconecta.test");
+		String doctorEmail = "medico.status." + suffix + "@vidaconecta.test";
+		String doctorToken = registerDoctor(doctorEmail, "CRMS" + suffix, "Clínica Geral");
+		String doctorId = currentUserId(doctorToken).toString();
+		String patientToken = registerPatient("pac.status." + suffix + "@vidaconecta.test", cpf(suffix, "09"));
+
+		mockMvc.perform(get("/api/v1/doctors").header("Authorization", bearer(patientToken)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[*].id", hasItem(doctorId)));
+
+		mockMvc.perform(patch("/api/v1/admin/doctors/" + doctorId + "/enabled")
+						.header("Authorization", bearer(adminToken))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{ "enabled": false }
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.enabled").value(false));
+
+		mockMvc.perform(get("/api/v1/doctors").header("Authorization", bearer(patientToken)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[*].id", not(hasItem(doctorId))));
+
+		mockMvc.perform(post("/api/v1/auth/login")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "email": "%s",
+								  "password": "password123"
+								}
+								""".formatted(doctorEmail)))
+				.andExpect(status().isUnauthorized());
+
+		mockMvc.perform(get("/api/v1/auth/me").header("Authorization", bearer(doctorToken)))
+				.andExpect(status().isUnauthorized());
+
+		mockMvc.perform(patch("/api/v1/admin/doctors/" + doctorId + "/enabled")
+						.header("Authorization", bearer(adminToken))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{ "enabled": true }
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.enabled").value(true));
+
+		mockMvc.perform(post("/api/v1/auth/login")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "email": "%s",
+								  "password": "password123"
+								}
+								""".formatted(doctorEmail)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.token").exists());
 	}
 }

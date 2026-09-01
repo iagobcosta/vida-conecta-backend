@@ -153,14 +153,39 @@ public class AdminStaffService {
 
 	@Transactional(readOnly = true)
 	public List<ManagedDoctorResponse> listDoctors() {
-		return doctorProfileRepository.findAllByOrderByFullNameAsc().stream()
-				.map(profile -> new ManagedDoctorResponse(
-						profile.getUserId(),
-						profile.getUser() == null ? null : profile.getUser().getEmail(),
-						profile.getFullName(),
-						profile.getCrm(),
-						profile.getSpecialty()))
+		return doctorProfileRepository.findAllWithUserOrderByFullNameAsc().stream()
+				.map(this::toManaged)
 				.toList();
+	}
+
+	@Transactional
+	public ManagedDoctorResponse setDoctorEnabled(UUID doctorId, boolean enabled) {
+		User user = userRepository.findById(doctorId)
+				.orElseThrow(() -> new NotFoundException("Médico não encontrado"));
+		if (user.getRole() != Role.MEDICO) {
+			throw new BusinessException("Somente contas de médico podem ser ativadas ou desativadas por aqui");
+		}
+		user.setEnabled(enabled);
+		DoctorProfile profile = doctorProfileRepository.findByUserId(doctorId)
+				.orElseThrow(() -> new NotFoundException("Perfil de médico não encontrado"));
+		return new ManagedDoctorResponse(
+				profile.getUserId(),
+				user.getEmail(),
+				profile.getFullName(),
+				profile.getCrm(),
+				profile.getSpecialty(),
+				user.isEnabled());
+	}
+
+	private ManagedDoctorResponse toManaged(DoctorProfile profile) {
+		User user = profile.getUser();
+		return new ManagedDoctorResponse(
+				profile.getUserId(),
+				user == null ? null : user.getEmail(),
+				profile.getFullName(),
+				profile.getCrm(),
+				profile.getSpecialty(),
+				user == null || user.isEnabled());
 	}
 
 	private UUID consumeAndRotate(UUID presented) {

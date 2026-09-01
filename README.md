@@ -66,7 +66,7 @@ Os testes de integração sobem PostgreSQL via Testcontainers. `ModularityTests`
 ## API (v1)
 
 - `POST /api/v1/auth/register` (paciente) · `POST /api/v1/auth/register/admin` · `POST /api/v1/auth/register/doctor` · `GET /api/v1/auth/invites/{token}` · `POST /api/v1/auth/login` · `GET /api/v1/auth/me`
-- `GET /api/v1/admin/bootstrap-token` · `GET|POST /api/v1/admin/doctors/invites` · `GET /api/v1/admin/doctors`
+- `GET /api/v1/admin/bootstrap-token` · `GET|POST /api/v1/admin/doctors/invites` · `GET /api/v1/admin/doctors` · `PATCH /api/v1/admin/doctors/{id}/enabled` · `GET /api/v1/admin/insights`
 - `GET /api/v1/doctors` · `GET /api/v1/doctors/{id}/availability` · `GET /api/v1/doctors/{id}/slots`
 - `GET|POST /api/v1/me/availability` · `DELETE /api/v1/me/availability/{id}`
 - `POST /api/v1/appointments` · `GET /api/v1/appointments` · `GET /api/v1/appointments/{id}` · `POST .../confirm` · `POST .../cancel` · `POST .../complete`
@@ -81,6 +81,8 @@ Cadastro público (`POST /api/v1/auth/register`) é exclusivo para pacientes.
 O primeiro administrador usa o token UUID guardado em `admin_bootstrap_tokens` (seed local: `b2222222-2222-4222-8222-222222222222`) em `POST /api/v1/auth/register/admin`. Depois do uso o token é apagado e um novo é gravado; a resposta devolve `nextBootstrapToken`. Administradores autenticados consultam o token vigente em `GET /api/v1/admin/bootstrap-token`.
 
 Médicos não se cadastram sozinhos: o admin convida com nome e e-mail (`POST /api/v1/admin/doctors/invites`). O convite vai por e-mail (AWS SES quando `SES_ENABLED=true`) com o link `/cadastro/medico?token=...`. O médico conclui em `POST /api/v1/auth/register/doctor`.
+
+O painel do administrador (`GET /api/v1/admin/insights`) devolve totais de consultas, evolução dos últimos 30 dias (fuso `America/Sao_Paulo`), especialidades e o censo do sistema. `PATCH /api/v1/admin/doctors/{id}/enabled` ativa ou desativa o médico: conta desativada some da listagem pública e não consegue entrar.
 
 JWT no header `Authorization: Bearer <token>`.
 

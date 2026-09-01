@@ -18,6 +18,12 @@ public interface IdentityFacade {
 
 	List<DoctorView> listDoctors();
 
+	List<DoctorView> listAllDoctors();
+
+	boolean isActiveDoctor(UUID userId);
+
+	SystemCensus census();
+
 	Optional<AdminView> findAdmin(UUID userId);
 
 	default String displayName(UUID userId) {
@@ -28,7 +34,15 @@ public interface IdentityFacade {
 				.orElse("Usuário");
 	}
 
-	record DoctorView(UUID userId, String fullName, String crm, String specialty) {
+	record DoctorView(UUID userId, String fullName, String crm, String specialty, boolean enabled) {
+	}
+
+	record SystemCensus(
+			long patients,
+			long doctorsActive,
+			long doctorsInactive,
+			long admins,
+			long pendingInvites) {
 	}
 
 	record PatientView(UUID userId, String fullName, String cpf) {

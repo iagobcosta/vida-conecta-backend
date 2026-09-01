@@ -94,6 +94,10 @@ public class Appointment {
 		return cancelledBy;
 	}
 
+	public Instant getCreatedAt() {
+		return createdAt;
+	}
+
 	public Instant endsAt() {
 		return scheduledAt.plusSeconds(durationMinutes * 60L);
 	}

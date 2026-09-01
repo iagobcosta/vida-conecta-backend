@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -15,6 +16,7 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
@@ -26,9 +28,11 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class SecurityConfig {
 
 	private final JwtCurrentUserConverter jwtCurrentUserConverter;
+	private final EnabledAccountFilter enabledAccountFilter;
 
-	public SecurityConfig(JwtCurrentUserConverter jwtCurrentUserConverter) {
+	public SecurityConfig(JwtCurrentUserConverter jwtCurrentUserConverter, EnabledAccountFilter enabledAccountFilter) {
 		this.jwtCurrentUserConverter = jwtCurrentUserConverter;
+		this.enabledAccountFilter = enabledAccountFilter;
 	}
 
 	@Bean
@@ -45,8 +49,16 @@ public class SecurityConfig {
 						.anyRequest().authenticated())
 				.oauth2ResourceServer(oauth -> oauth
 						.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtCurrentUserConverter)))
+				.addFilterAfter(enabledAccountFilter, BearerTokenAuthenticationFilter.class)
 				.exceptionHandling(handling -> handling.authenticationEntryPoint(unauthorizedEntryPoint()));
 		return http.build();
+	}
+
+	@Bean
+	FilterRegistrationBean<EnabledAccountFilter> enabledAccountFilterRegistration(EnabledAccountFilter filter) {
+		FilterRegistrationBean<EnabledAccountFilter> registration = new FilterRegistrationBean<>(filter);
+		registration.setEnabled(false);
+		return registration;
 	}
 
 	@Bean

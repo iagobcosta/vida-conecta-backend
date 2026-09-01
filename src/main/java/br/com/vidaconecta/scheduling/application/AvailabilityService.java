@@ -56,7 +56,7 @@ public class AvailabilityService {
 
 	@Transactional(readOnly = true)
 	public List<AvailabilityResponse> listByDoctor(UUID doctorId) {
-		if (!identityFacade.isDoctor(doctorId)) {
+		if (!identityFacade.isActiveDoctor(doctorId)) {
 			throw new NotFoundException("Médico não encontrado");
 		}
 		return availabilityRepository.findByDoctorIdOrderByDayOfWeekAscStartTimeAsc(doctorId).stream()
@@ -102,7 +102,7 @@ public class AvailabilityService {
 
 	@Transactional(readOnly = true)
 	public List<AvailableSlotResponse> listSlots(UUID doctorId, Instant now) {
-		if (!identityFacade.isDoctor(doctorId)) {
+		if (!identityFacade.isActiveDoctor(doctorId)) {
 			throw new NotFoundException("Médico não encontrado");
 		}
 		List<DoctorAvailability> windows = availabilityRepository.findByDoctorIdOrderByDayOfWeekAscStartTimeAsc(doctorId);

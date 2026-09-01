@@ -1,6 +1,7 @@
 package br.com.vidaconecta.identity.infrastructure;
 
 import br.com.vidaconecta.identity.domain.DoctorInvite;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -13,4 +14,6 @@ public interface DoctorInviteRepository extends JpaRepository<DoctorInvite, UUID
 	Optional<DoctorInvite> findByEmailIgnoreCaseAndAcceptedAtIsNull(String email);
 
 	List<DoctorInvite> findAllByOrderByCreatedAtDesc();
+
+	long countByAcceptedAtIsNullAndExpiresAtAfter(Instant now);
 }

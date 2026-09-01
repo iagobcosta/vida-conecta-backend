@@ -234,4 +234,40 @@ class SchedulingTests extends AbstractIntegrationTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.unreadCount").value(1));
 	}
+
+	@Test
+	void shouldExposeAdminInsightsAndRejectPatients() throws Exception {
+		String suffix = uniqueSuffix();
+		String adminToken = registerAdmin("admin.insights." + suffix + "@vidaconecta.test");
+		String patientToken = registerPatient("pac.insights." + suffix + "@vidaconecta.test", cpf(suffix, "08"));
+		String doctorToken = registerDoctor("med.insights." + suffix + "@vidaconecta.test", "CRMI" + suffix, "Cardiologia");
+		openClinicHours(doctorToken);
+		String doctorId = currentUserId(doctorToken).toString();
+		Instant start = Instant.now().plus(3, ChronoUnit.HOURS).truncatedTo(ChronoUnit.SECONDS);
+
+		mockMvc.perform(post("/api/v1/appointments")
+						.header("Authorization", bearer(patientToken))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "doctorId": "%s",
+								  "scheduledAt": "%s",
+								  "durationMinutes": 30
+								}
+								""".formatted(doctorId, start)))
+				.andExpect(status().isCreated());
+
+		mockMvc.perform(get("/api/v1/admin/insights").header("Authorization", bearer(patientToken)))
+				.andExpect(status().isForbidden());
+
+		mockMvc.perform(get("/api/v1/admin/insights").header("Authorization", bearer(adminToken)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.clinicTimeZone").value("America/Sao_Paulo"))
+				.andExpect(jsonPath("$.census.patients").value(Matchers.greaterThanOrEqualTo(1)))
+				.andExpect(jsonPath("$.census.doctorsActive").value(Matchers.greaterThanOrEqualTo(1)))
+				.andExpect(jsonPath("$.appointments.total").value(Matchers.greaterThanOrEqualTo(1)))
+				.andExpect(jsonPath("$.appointments.scheduled").value(Matchers.greaterThanOrEqualTo(1)))
+				.andExpect(jsonPath("$.last30Days.length()").value(30))
+				.andExpect(jsonPath("$.bySpecialty[0].specialty").exists());
+	}
 }

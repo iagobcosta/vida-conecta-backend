@@ -68,7 +68,7 @@ public class AppointmentService {
 		if (!currentUser.isPatient()) {
 			throw new ForbiddenException("Somente pacientes podem agendar consultas");
 		}
-		if (!identityFacade.isDoctor(request.doctorId())) {
+		if (!identityFacade.isActiveDoctor(request.doctorId())) {
 			throw new NotFoundException("Médico não encontrado");
 		}
 		Instant scheduledAt = request.scheduledAt();
