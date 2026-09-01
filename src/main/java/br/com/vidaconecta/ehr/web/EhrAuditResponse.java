@@ -6,6 +6,7 @@ import java.util.UUID;
 public record EhrAuditResponse(
 		UUID id,
 		UUID actorUserId,
+		String actorName,
 		UUID patientId,
 		UUID appointmentId,
 		String action,

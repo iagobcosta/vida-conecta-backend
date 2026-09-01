@@ -7,7 +7,9 @@ import java.util.UUID;
 public record ConsentResponse(
 		UUID id,
 		UUID patientId,
+		String patientName,
 		UUID doctorId,
+		String doctorName,
 		ConsentScope scope,
 		UUID appointmentId,
 		int version,

@@ -12,5 +12,8 @@ public record AppointmentResponse(
 		String doctorName,
 		Instant scheduledAt,
 		int durationMinutes,
-		AppointmentStatus status) {
+		AppointmentStatus status,
+		Instant joinOpensAt,
+		Instant joinClosesAt,
+		boolean canJoinNow) {
 }

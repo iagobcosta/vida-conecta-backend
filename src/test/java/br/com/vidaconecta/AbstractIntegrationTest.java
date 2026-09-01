@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.jayway.jsonpath.JsonPath;
 import java.nio.charset.StandardCharsets;
+import java.time.DayOfWeek;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -84,6 +85,23 @@ public abstract class AbstractIntegrationTest {
 				.andExpect(status().isCreated())
 				.andReturn();
 		return tokenFrom(result);
+	}
+
+	protected void openClinicHours(String doctorToken) throws Exception {
+		for (DayOfWeek day : DayOfWeek.values()) {
+			mockMvc.perform(post("/api/v1/me/availability")
+							.header("Authorization", bearer(doctorToken))
+							.contentType(MediaType.APPLICATION_JSON)
+							.content("""
+									{
+									  "dayOfWeek": "%s",
+									  "startTime": "00:00",
+									  "endTime": "23:59",
+									  "slotMinutes": 30
+									}
+									""".formatted(day.name())))
+					.andExpect(status().isCreated());
+		}
 	}
 
 	protected String login(String email) throws Exception {

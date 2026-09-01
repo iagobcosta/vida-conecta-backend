@@ -18,6 +18,13 @@ public interface IdentityFacade {
 
 	List<DoctorView> listDoctors();
 
+	default String displayName(UUID userId) {
+		return findDoctor(userId)
+				.map(DoctorView::fullName)
+				.or(() -> findPatient(userId).map(PatientView::fullName))
+				.orElse("Usuário");
+	}
+
 	record DoctorView(UUID userId, String fullName, String crm, String specialty) {
 	}
 

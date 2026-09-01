@@ -8,6 +8,7 @@ import br.com.vidaconecta.ehr.infrastructure.ClinicalNoteRepository;
 import br.com.vidaconecta.ehr.infrastructure.EhrAccessAuditRepository;
 import br.com.vidaconecta.ehr.web.ClinicalNoteResponse;
 import br.com.vidaconecta.ehr.web.CreateClinicalNoteRequest;
+import br.com.vidaconecta.ehr.web.EhrAuditResponse;
 import br.com.vidaconecta.identity.api.CurrentUser;
 import br.com.vidaconecta.identity.api.IdentityFacade;
 import br.com.vidaconecta.scheduling.api.SchedulingFacade;
@@ -97,14 +98,16 @@ public class EhrService {
 	}
 
 	@Transactional(readOnly = true)
-	public List<EhrAccessAudit> listAudit(CurrentUser currentUser, UUID patientId) {
+	public List<EhrAuditResponse> listAudit(CurrentUser currentUser, UUID patientId) {
 		if (!currentUser.isAdmin() && !(currentUser.isPatient() && currentUser.id().equals(patientId))) {
 			throw new ForbiddenException("Auditoria disponível apenas ao paciente titular ou admin");
 		}
 		if (patientId == null) {
 			throw new BusinessException("patientId é obrigatório");
 		}
-		return auditRepository.findByPatientIdOrderByAccessedAtDesc(patientId);
+		return auditRepository.findByPatientIdOrderByAccessedAtDesc(patientId).stream()
+				.map(this::toAudit)
+				.toList();
 	}
 
 	private ClinicalNoteResponse toResponse(ClinicalNote note, String content) {
@@ -119,5 +122,16 @@ public class EhrService {
 				note.getAppointmentId(),
 				content,
 				note.getCreatedAt());
+	}
+
+	private EhrAuditResponse toAudit(EhrAccessAudit audit) {
+		return new EhrAuditResponse(
+				audit.getId(),
+				audit.getActorUserId(),
+				identityFacade.displayName(audit.getActorUserId()),
+				audit.getPatientId(),
+				audit.getAppointmentId(),
+				audit.getAction(),
+				audit.getAccessedAt());
 	}
 }

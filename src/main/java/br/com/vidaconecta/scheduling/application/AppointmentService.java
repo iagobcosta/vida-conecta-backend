@@ -17,6 +17,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,10 +30,18 @@ public class AppointmentService {
 
 	private final AppointmentRepository appointmentRepository;
 	private final IdentityFacade identityFacade;
+	private final AvailabilityService availabilityService;
+	private final int joinWindowMinutesBefore;
 
-	public AppointmentService(AppointmentRepository appointmentRepository, IdentityFacade identityFacade) {
+	public AppointmentService(
+			AppointmentRepository appointmentRepository,
+			IdentityFacade identityFacade,
+			AvailabilityService availabilityService,
+			@Value("${vida-conecta.video.join-window-minutes-before:10}") int joinWindowMinutesBefore) {
 		this.appointmentRepository = appointmentRepository;
 		this.identityFacade = identityFacade;
+		this.availabilityService = availabilityService;
+		this.joinWindowMinutesBefore = joinWindowMinutesBefore;
 	}
 
 	@Transactional(readOnly = true)
@@ -58,6 +67,7 @@ public class AppointmentService {
 		if (duration < MIN_DURATION || duration > MAX_DURATION) {
 			throw new BusinessException("Duração deve estar entre 15 e 120 minutos");
 		}
+		availabilityService.assertBookable(request.doctorId(), scheduledAt, duration);
 		Instant end = scheduledAt.plus(Duration.ofMinutes(duration));
 		boolean overlap = appointmentRepository
 				.findDoctorAppointmentsInWindow(
@@ -110,6 +120,17 @@ public class AppointmentService {
 		return toResponse(appointment);
 	}
 
+	@Transactional
+	public AppointmentResponse complete(CurrentUser currentUser, UUID appointmentId) {
+		Appointment appointment = requireOwnedByDoctor(currentUser, appointmentId);
+		try {
+			appointment.complete();
+		} catch (IllegalStateException exception) {
+			throw new BusinessException(exception.getMessage());
+		}
+		return toResponse(appointment);
+	}
+
 	private Appointment requireParticipant(CurrentUser currentUser, UUID appointmentId) {
 		Appointment appointment = appointmentRepository.findById(appointmentId)
 				.orElseThrow(() -> new NotFoundException("Consulta não encontrada"));
@@ -121,11 +142,11 @@ public class AppointmentService {
 
 	private Appointment requireOwnedByDoctor(CurrentUser currentUser, UUID appointmentId) {
 		if (!currentUser.isDoctor()) {
-			throw new ForbiddenException("Somente o médico pode confirmar a consulta");
+			throw new ForbiddenException("Somente o médico da consulta pode alterar o status");
 		}
 		Appointment appointment = requireParticipant(currentUser, appointmentId);
 		if (!appointment.getDoctorId().equals(currentUser.id())) {
-			throw new ForbiddenException("Somente o médico da consulta pode confirmá-la");
+			throw new ForbiddenException("Somente o médico da consulta pode alterar o status");
 		}
 		return appointment;
 	}
@@ -137,6 +158,12 @@ public class AppointmentService {
 		String patientName = identityFacade.findPatient(appointment.getPatientId())
 				.map(IdentityFacade.PatientView::fullName)
 				.orElse(null);
+		Instant joinOpensAt = appointment.getScheduledAt().minus(Duration.ofMinutes(joinWindowMinutesBefore));
+		Instant joinClosesAt = appointment.endsAt();
+		Instant now = Instant.now();
+		boolean canJoinNow = appointment.isJoinable()
+				&& !now.isBefore(joinOpensAt)
+				&& !now.isAfter(joinClosesAt);
 		return new AppointmentResponse(
 				appointment.getId(),
 				appointment.getPatientId(),
@@ -145,6 +172,9 @@ public class AppointmentService {
 				doctorName,
 				appointment.getScheduledAt(),
 				appointment.getDurationMinutes(),
-				appointment.getStatus());
+				appointment.getStatus(),
+				joinOpensAt,
+				joinClosesAt,
+				canJoinNow);
 	}
 }

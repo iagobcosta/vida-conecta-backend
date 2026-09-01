@@ -4,6 +4,7 @@ import br.com.vidaconecta.identity.api.Role;
 import br.com.vidaconecta.identity.domain.DoctorProfile;
 import br.com.vidaconecta.identity.domain.PatientProfile;
 import br.com.vidaconecta.identity.domain.User;
+import br.com.vidaconecta.shared.api.PersonalDataMask;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -24,7 +25,7 @@ public record MeResponse(
 				user.getEmail(),
 				user.getRole(),
 				profile.getFullName(),
-				profile.getCpf(),
+				PersonalDataMask.cpf(profile.getCpf()),
 				profile.getBirthDate(),
 				profile.getPhone(),
 				null,

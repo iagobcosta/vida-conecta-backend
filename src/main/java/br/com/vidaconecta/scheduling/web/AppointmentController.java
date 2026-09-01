@@ -66,4 +66,12 @@ public class AppointmentController {
 			@PathVariable UUID id) {
 		return appointmentService.cancel(currentUser, id);
 	}
+
+	@PostMapping("/appointments/{id}/complete")
+	@PreAuthorize("hasRole('MEDICO')")
+	public AppointmentResponse complete(
+			@AuthenticationPrincipal CurrentUser currentUser,
+			@PathVariable UUID id) {
+		return appointmentService.complete(currentUser, id);
+	}
 }

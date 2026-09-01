@@ -1,5 +1,6 @@
 package br.com.vidaconecta;
 
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -20,7 +21,8 @@ class IdentityTests extends AbstractIntegrationTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.email").value(email))
 				.andExpect(jsonPath("$.role").value("PACIENTE"))
-				.andExpect(jsonPath("$.fullName").value("Paciente Teste"));
+				.andExpect(jsonPath("$.fullName").value("Paciente Teste"))
+				.andExpect(jsonPath("$.cpf").value(startsWith("***.***.***-")));
 
 		mockMvc.perform(post("/api/v1/auth/login")
 						.contentType(MediaType.APPLICATION_JSON)

@@ -114,6 +114,14 @@ public class Appointment {
 		}
 	}
 
+	public void complete() {
+		if (status != AppointmentStatus.CONFIRMED && status != AppointmentStatus.IN_PROGRESS) {
+			throw new IllegalStateException("Somente consultas confirmadas ou em andamento podem ser concluídas");
+		}
+		status = AppointmentStatus.COMPLETED;
+		updatedAt = Instant.now();
+	}
+
 	public boolean isJoinable() {
 		return status == AppointmentStatus.CONFIRMED || status == AppointmentStatus.IN_PROGRESS;
 	}

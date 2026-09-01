@@ -19,6 +19,8 @@ class ClinicalFlowTests extends AbstractIntegrationTest {
 		String patientToken = registerPatient("flow.paciente." + suffix + "@vidaconecta.test", cpf(suffix, "11"));
 		String doctorAToken = registerDoctor("flow.medica." + suffix + "@vidaconecta.test", "CRMA" + suffix, "Cardiologia");
 		String doctorBToken = registerDoctor("flow.medicob." + suffix + "@vidaconecta.test", "CRMB" + suffix, "Clínica Geral");
+		openClinicHours(doctorAToken);
+		openClinicHours(doctorBToken);
 
 		String patientId = currentUserId(patientToken).toString();
 		String doctorAId = currentUserId(doctorAToken).toString();
@@ -56,7 +58,9 @@ class ClinicalFlowTests extends AbstractIntegrationTest {
 								}
 								""".formatted(doctorBId)))
 				.andExpect(status().isCreated())
-				.andExpect(jsonPath("$.version").value(1));
+				.andExpect(jsonPath("$.version").value(1))
+				.andExpect(jsonPath("$.doctorName").exists())
+				.andExpect(jsonPath("$.patientName").exists());
 
 		mockMvc.perform(get("/api/v1/patients/" + patientId + "/ehr")
 						.header("Authorization", bearer(doctorBToken)))
@@ -67,7 +71,8 @@ class ClinicalFlowTests extends AbstractIntegrationTest {
 		mockMvc.perform(get("/api/v1/ehr/audit").param("patientId", patientId)
 						.header("Authorization", bearer(patientToken)))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$[0].action").exists());
+				.andExpect(jsonPath("$[0].action").exists())
+				.andExpect(jsonPath("$[0].actorName").exists());
 
 		mockMvc.perform(post("/api/v1/prescriptions")
 						.header("Authorization", bearer(doctorAToken))

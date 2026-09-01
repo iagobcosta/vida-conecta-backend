@@ -1,7 +1,6 @@
 package br.com.vidaconecta.ehr.web;
 
 import br.com.vidaconecta.ehr.application.EhrService;
-import br.com.vidaconecta.ehr.domain.EhrAccessAudit;
 import br.com.vidaconecta.identity.api.CurrentUser;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -50,18 +49,6 @@ public class EhrController {
 	public List<EhrAuditResponse> audit(
 			@AuthenticationPrincipal CurrentUser currentUser,
 			@RequestParam UUID patientId) {
-		return ehrService.listAudit(currentUser, patientId).stream()
-				.map(EhrController::toAudit)
-				.toList();
-	}
-
-	private static EhrAuditResponse toAudit(EhrAccessAudit audit) {
-		return new EhrAuditResponse(
-				audit.getId(),
-				audit.getActorUserId(),
-				audit.getPatientId(),
-				audit.getAppointmentId(),
-				audit.getAction(),
-				audit.getAccessedAt());
+		return ehrService.listAudit(currentUser, patientId);
 	}
 }

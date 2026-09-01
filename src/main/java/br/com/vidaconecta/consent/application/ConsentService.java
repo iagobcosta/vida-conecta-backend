@@ -79,7 +79,9 @@ public class ConsentService {
 		return new ConsentResponse(
 				consent.getId(),
 				consent.getPatientId(),
+				identityFacade.findPatient(consent.getPatientId()).map(IdentityFacade.PatientView::fullName).orElse(null),
 				consent.getDoctorId(),
+				identityFacade.findDoctor(consent.getDoctorId()).map(IdentityFacade.DoctorView::fullName).orElse(null),
 				consent.getScope(),
 				consent.getAppointmentId(),
 				consent.getVersion(),

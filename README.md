@@ -10,7 +10,7 @@ Pacotes em `br.com.vidaconecta`, fronteiras verificadas com [Spring Modulith](ht
 | --- | --- | --- |
 | Shared | `shared` | Exceções, `ApiError`, OpenAPI |
 | Identity | `identity` | Cadastro, login JWT, papéis (paciente, médico, admin) e Spring Security |
-| Scheduling | `scheduling` | Médicos, consultas, conflitos, confirmar/cancelar |
+| Scheduling | `scheduling` | Médicos, horários disponíveis, consultas, conflitos, confirmar/cancelar |
 | Consent | `consent` | Consentimento versionado (por médico ou por consulta) |
 | EHR | `ehr` | Prontuário cifrado (AES-GCM) e auditoria de acesso |
 | Prescription | `prescription` | Receita digital ligada à consulta |
@@ -61,8 +61,9 @@ Os testes de integração sobem PostgreSQL via Testcontainers. `ModularityTests`
 ## API (v1)
 
 - `POST /api/v1/auth/register` · `POST /api/v1/auth/login` · `GET /api/v1/auth/me`
-- `GET /api/v1/doctors`
-- `POST /api/v1/appointments` · `GET /api/v1/appointments` · `POST /api/v1/appointments/{id}/confirm` · `POST /api/v1/appointments/{id}/cancel`
+- `GET /api/v1/doctors` · `GET /api/v1/doctors/{id}/availability` · `GET /api/v1/doctors/{id}/slots`
+- `GET|POST /api/v1/me/availability` · `DELETE /api/v1/me/availability/{id}`
+- `POST /api/v1/appointments` · `GET /api/v1/appointments` · `POST .../confirm` · `POST .../cancel` · `POST .../complete`
 - `POST /api/v1/consents` · `GET /api/v1/consents` · `POST /api/v1/consents/{id}/revoke`
 - `POST /api/v1/patients/{patientId}/ehr` · `GET /api/v1/patients/{patientId}/ehr` · `GET /api/v1/ehr/audit`
 - `POST /api/v1/prescriptions` · `GET /api/v1/prescriptions`
