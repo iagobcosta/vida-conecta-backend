@@ -11,6 +11,8 @@ import br.com.vidaconecta.ehr.web.CreateClinicalNoteRequest;
 import br.com.vidaconecta.ehr.web.EhrAuditResponse;
 import br.com.vidaconecta.identity.api.CurrentUser;
 import br.com.vidaconecta.identity.api.IdentityFacade;
+import br.com.vidaconecta.notification.api.NotificationFacade;
+import br.com.vidaconecta.notification.api.NotificationType;
 import br.com.vidaconecta.scheduling.api.SchedulingFacade;
 import br.com.vidaconecta.shared.api.BusinessException;
 import br.com.vidaconecta.shared.api.ForbiddenException;
@@ -29,6 +31,7 @@ public class EhrService {
 	private final ConsentFacade consentFacade;
 	private final IdentityFacade identityFacade;
 	private final SchedulingFacade schedulingFacade;
+	private final NotificationFacade notificationFacade;
 
 	public EhrService(
 			ClinicalNoteRepository clinicalNoteRepository,
@@ -36,13 +39,15 @@ public class EhrService {
 			ClinicalContentEncryptor encryptor,
 			ConsentFacade consentFacade,
 			IdentityFacade identityFacade,
-			SchedulingFacade schedulingFacade) {
+			SchedulingFacade schedulingFacade,
+			NotificationFacade notificationFacade) {
 		this.clinicalNoteRepository = clinicalNoteRepository;
 		this.auditRepository = auditRepository;
 		this.encryptor = encryptor;
 		this.consentFacade = consentFacade;
 		this.identityFacade = identityFacade;
 		this.schedulingFacade = schedulingFacade;
+		this.notificationFacade = notificationFacade;
 	}
 
 	@Transactional
@@ -67,6 +72,14 @@ public class EhrService {
 				encrypted.iv());
 		clinicalNoteRepository.save(note);
 		auditRepository.save(EhrAccessAudit.record(currentUser.id(), patientId, request.appointmentId(), "WRITE"));
+		notificationFacade.push(new NotificationFacade.NewNotification(
+				patientId,
+				NotificationType.EHR_NOTE_ADDED,
+				"Nova evolução no prontuário",
+				identityFacade.displayName(currentUser.id()) + " registrou uma evolução da consulta.",
+				request.appointmentId(),
+				"/prontuario",
+				"Ver prontuário"));
 		return toResponse(note, request.content());
 	}
 

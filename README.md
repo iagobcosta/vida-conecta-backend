@@ -11,6 +11,7 @@ Pacotes em `br.com.vidaconecta`, fronteiras verificadas com [Spring Modulith](ht
 | Shared | `shared` | Exceções, `ApiError`, OpenAPI |
 | Identity | `identity` | Cadastro, login JWT, papéis (paciente, médico, admin) e Spring Security |
 | Scheduling | `scheduling` | Médicos, horários disponíveis, consultas, conflitos, confirmar/cancelar |
+| Notification | `notification` | Notificações in-app dos eventos clínicos (confirmação, cancelamento, receita, consentimento) |
 | Consent | `consent` | Consentimento versionado (por médico ou por consulta) |
 | EHR | `ehr` | Prontuário cifrado (AES-GCM) e auditoria de acesso |
 | Prescription | `prescription` | Receita digital ligada à consulta |
@@ -63,10 +64,13 @@ Os testes de integração sobem PostgreSQL via Testcontainers. `ModularityTests`
 - `POST /api/v1/auth/register` · `POST /api/v1/auth/login` · `GET /api/v1/auth/me`
 - `GET /api/v1/doctors` · `GET /api/v1/doctors/{id}/availability` · `GET /api/v1/doctors/{id}/slots`
 - `GET|POST /api/v1/me/availability` · `DELETE /api/v1/me/availability/{id}`
-- `POST /api/v1/appointments` · `GET /api/v1/appointments` · `POST .../confirm` · `POST .../cancel` · `POST .../complete`
+- `POST /api/v1/appointments` · `GET /api/v1/appointments` · `GET /api/v1/appointments/{id}` · `POST .../confirm` · `POST .../cancel` · `POST .../complete`
+- `GET /api/v1/notifications` · `GET /api/v1/notifications/unread-count` · `POST .../{id}/read` · `POST .../read-all`
 - `POST /api/v1/consents` · `GET /api/v1/consents` · `POST /api/v1/consents/{id}/revoke`
 - `POST /api/v1/patients/{patientId}/ehr` · `GET /api/v1/patients/{patientId}/ehr` · `GET /api/v1/ehr/audit`
 - `POST /api/v1/prescriptions` · `GET /api/v1/prescriptions`
 - `POST /api/v1/video/appointments/{id}/token`
 
 Cadastro de médico e paciente usa o mesmo `register`, com `role` `MEDICO` ou `PACIENTE`. JWT no header `Authorization: Bearer <token>`.
+
+O médico precisa informar um motivo (mínimo 10 caracteres) ao cancelar. O paciente recebe a notificação com o motivo e um atalho para reagendar.

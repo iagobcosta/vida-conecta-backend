@@ -137,7 +137,7 @@ public abstract class AbstractIntegrationTest {
 		return JsonPath.read(body(result), "$.token");
 	}
 
-	private String body(MvcResult result) {
+	protected String body(MvcResult result) {
 		return new String(result.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
 	}
 }

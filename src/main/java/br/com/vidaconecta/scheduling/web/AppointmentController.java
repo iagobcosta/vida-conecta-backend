@@ -63,8 +63,9 @@ public class AppointmentController {
 	@PostMapping("/appointments/{id}/cancel")
 	public AppointmentResponse cancel(
 			@AuthenticationPrincipal CurrentUser currentUser,
-			@PathVariable UUID id) {
-		return appointmentService.cancel(currentUser, id);
+			@PathVariable UUID id,
+			@RequestBody(required = false) @Valid CancelAppointmentRequest request) {
+		return appointmentService.cancel(currentUser, id, request);
 	}
 
 	@PostMapping("/appointments/{id}/complete")

@@ -2,6 +2,8 @@ package br.com.vidaconecta.prescription.application;
 
 import br.com.vidaconecta.identity.api.CurrentUser;
 import br.com.vidaconecta.identity.api.IdentityFacade;
+import br.com.vidaconecta.notification.api.NotificationFacade;
+import br.com.vidaconecta.notification.api.NotificationType;
 import br.com.vidaconecta.prescription.domain.Prescription;
 import br.com.vidaconecta.prescription.domain.PrescriptionItem;
 import br.com.vidaconecta.prescription.infrastructure.PrescriptionRepository;
@@ -22,14 +24,17 @@ public class PrescriptionService {
 	private final PrescriptionRepository prescriptionRepository;
 	private final SchedulingFacade schedulingFacade;
 	private final IdentityFacade identityFacade;
+	private final NotificationFacade notificationFacade;
 
 	public PrescriptionService(
 			PrescriptionRepository prescriptionRepository,
 			SchedulingFacade schedulingFacade,
-			IdentityFacade identityFacade) {
+			IdentityFacade identityFacade,
+			NotificationFacade notificationFacade) {
 		this.prescriptionRepository = prescriptionRepository;
 		this.schedulingFacade = schedulingFacade;
 		this.identityFacade = identityFacade;
+		this.notificationFacade = notificationFacade;
 	}
 
 	@Transactional
@@ -54,6 +59,14 @@ public class PrescriptionService {
 				request.appointmentId(),
 				items);
 		prescriptionRepository.save(prescription);
+		notificationFacade.push(new NotificationFacade.NewNotification(
+				request.patientId(),
+				NotificationType.PRESCRIPTION_ISSUED,
+				"Nova receita disponível",
+				identityFacade.displayName(currentUser.id()) + " emitiu uma receita da sua consulta.",
+				request.appointmentId(),
+				"/receitas",
+				"Ver receita"));
 		return toResponse(prescription);
 	}
 

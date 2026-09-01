@@ -7,6 +7,8 @@ import br.com.vidaconecta.consent.web.ConsentResponse;
 import br.com.vidaconecta.consent.web.GrantConsentRequest;
 import br.com.vidaconecta.identity.api.CurrentUser;
 import br.com.vidaconecta.identity.api.IdentityFacade;
+import br.com.vidaconecta.notification.api.NotificationFacade;
+import br.com.vidaconecta.notification.api.NotificationType;
 import br.com.vidaconecta.shared.api.BusinessException;
 import br.com.vidaconecta.shared.api.ForbiddenException;
 import br.com.vidaconecta.shared.api.NotFoundException;
@@ -20,10 +22,15 @@ public class ConsentService {
 
 	private final ConsentRepository consentRepository;
 	private final IdentityFacade identityFacade;
+	private final NotificationFacade notificationFacade;
 
-	public ConsentService(ConsentRepository consentRepository, IdentityFacade identityFacade) {
+	public ConsentService(
+			ConsentRepository consentRepository,
+			IdentityFacade identityFacade,
+			NotificationFacade notificationFacade) {
 		this.consentRepository = consentRepository;
 		this.identityFacade = identityFacade;
+		this.notificationFacade = notificationFacade;
 	}
 
 	@Transactional
@@ -49,6 +56,15 @@ public class ConsentService {
 				version,
 				request.expiresAt());
 		consentRepository.save(consent);
+		String patientName = identityFacade.displayName(currentUser.id());
+		notificationFacade.push(new NotificationFacade.NewNotification(
+				request.doctorId(),
+				NotificationType.CONSENT_GRANTED,
+				"Consentimento concedido",
+				patientName + " autorizou o acesso ao prontuário.",
+				request.appointmentId(),
+				"/prontuario",
+				"Abrir prontuário"));
 		return toResponse(consent);
 	}
 
@@ -72,6 +88,15 @@ public class ConsentService {
 		} catch (IllegalStateException exception) {
 			throw new BusinessException(exception.getMessage());
 		}
+		String patientName = identityFacade.displayName(currentUser.id());
+		notificationFacade.push(new NotificationFacade.NewNotification(
+				consent.getDoctorId(),
+				NotificationType.CONSENT_REVOKED,
+				"Consentimento revogado",
+				patientName + " revogou o acesso ao prontuário.",
+				consent.getAppointmentId(),
+				"/prontuario",
+				"Ver prontuário"));
 		return toResponse(consent);
 	}
 

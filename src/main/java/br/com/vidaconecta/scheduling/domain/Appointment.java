@@ -33,6 +33,12 @@ public class Appointment {
 	@Column(nullable = false)
 	private AppointmentStatus status;
 
+	@Column(name = "cancel_reason", length = 500)
+	private String cancelReason;
+
+	@Column(name = "cancelled_by")
+	private UUID cancelledBy;
+
 	@Column(name = "created_at", nullable = false)
 	private Instant createdAt;
 
@@ -80,6 +86,14 @@ public class Appointment {
 		return status;
 	}
 
+	public String getCancelReason() {
+		return cancelReason;
+	}
+
+	public UUID getCancelledBy() {
+		return cancelledBy;
+	}
+
 	public Instant endsAt() {
 		return scheduledAt.plusSeconds(durationMinutes * 60L);
 	}
@@ -101,9 +115,11 @@ public class Appointment {
 		updatedAt = Instant.now();
 	}
 
-	public void cancel() {
+	public void cancel(UUID actorId, String reason) {
 		ensureActive();
 		status = AppointmentStatus.CANCELLED;
+		cancelledBy = actorId;
+		cancelReason = reason;
 		updatedAt = Instant.now();
 	}
 

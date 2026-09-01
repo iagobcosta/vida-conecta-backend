@@ -15,5 +15,8 @@ public record AppointmentResponse(
 		AppointmentStatus status,
 		Instant joinOpensAt,
 		Instant joinClosesAt,
-		boolean canJoinNow) {
+		boolean canJoinNow,
+		String cancelReason,
+		UUID cancelledBy,
+		String cancelledByName) {
 }
