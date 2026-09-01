@@ -65,7 +65,10 @@ public class SecurityConfig {
 	CorsConfigurationSource corsConfigurationSource(
 			@Value("${vida-conecta.cors.allowed-origins:http://localhost:5173}") String allowedOrigins) {
 		CorsConfiguration configuration = new CorsConfiguration();
-		configuration.setAllowedOrigins(Arrays.stream(allowedOrigins.split(",")).map(String::trim).toList());
+		configuration.setAllowedOriginPatterns(Arrays.stream(allowedOrigins.split(","))
+				.map(String::trim)
+				.filter(origin -> !origin.isEmpty())
+				.toList());
 		configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
 		configuration.setAllowedHeaders(List.of("*"));
 		configuration.setAllowCredentials(true);

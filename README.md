@@ -49,8 +49,8 @@ docker compose up -d
 | `DATABASE_USERNAME` / `DATABASE_PASSWORD` | `vida_conecta` |
 | `JWT_SECRET` | chave local de desenvolvimento (≥ 32 caracteres) |
 | `EHR_ENCRYPTION_KEY` | Base64 de 32 bytes |
-| `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` |
-| `FRONTEND_BASE_URL` | `http://localhost:5173` (link dos convites) |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` (aceita padrões, ex. `https://*.vercel.app`) |
+| `FRONTEND_BASE_URL` | `http://localhost:5173` (link dos convites; na Vercel use a URL do front) |
 | `SES_ENABLED` | `false` (em `true`, envia convite pelo Amazon SES) |
 | `MAIL_FROM` | remetente verificado no SES |
 | `AWS_REGION` | `us-east-1` |
