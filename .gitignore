@@ -1,6 +1,32 @@
-.DS_Store
+# Maven
+target/
+!.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
+
+# Logs e dumps
+*.log
+logs/
+hs_err_pid*
+replay_pid*
+
+# Segredos e overrides locais
+.env
+.env.*
+!.env.example
+application-local.yaml
+application-local.yml
+*.pem
+*.p12
+*.jks
+*.key
+
+# Docker Compose local
+docker-compose.override.yml
+
+# OS
+.DS_Store
+Thumbs.db
 
 ### STS ###
 .apt_generated
@@ -16,6 +42,7 @@
 *.iws
 *.iml
 *.ipr
+out/
 
 ### NetBeans ###
 /nbproject/private/
@@ -29,3 +56,4 @@ build/
 
 ### VS Code ###
 .vscode/
+*.code-workspace

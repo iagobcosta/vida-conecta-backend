@@ -1,0 +1,6 @@
+vida-conecta:
+  jwt:
+    secret: test-secret-key-must-be-at-least-32b
+    expiration-minutes: 60
+  ehr:
+    encryption-key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
