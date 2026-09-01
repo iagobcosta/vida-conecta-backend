@@ -10,8 +10,8 @@ import jakarta.persistence.Table;
 import java.util.UUID;
 
 @Entity
-@Table(name = "doctor_profiles")
-public class DoctorProfile {
+@Table(name = "admin_profiles")
+public class AdminProfile {
 
 	@Id
 	@Column(name = "user_id")
@@ -25,21 +25,13 @@ public class DoctorProfile {
 	@Column(name = "full_name", nullable = false)
 	private String fullName;
 
-	@Column(nullable = false, unique = true)
-	private String crm;
-
-	@Column(nullable = false)
-	private String specialty;
-
-	protected DoctorProfile() {
+	protected AdminProfile() {
 	}
 
-	public static DoctorProfile of(User user, String fullName, String crm, String specialty) {
-		DoctorProfile profile = new DoctorProfile();
+	public static AdminProfile of(User user, String fullName) {
+		AdminProfile profile = new AdminProfile();
 		profile.user = user;
 		profile.fullName = fullName;
-		profile.crm = crm;
-		profile.specialty = specialty;
 		return profile;
 	}
 
@@ -47,19 +39,7 @@ public class DoctorProfile {
 		return userId;
 	}
 
-	public User getUser() {
-		return user;
-	}
-
 	public String getFullName() {
 		return fullName;
-	}
-
-	public String getCrm() {
-		return crm;
-	}
-
-	public String getSpecialty() {
-		return specialty;
 	}
 }

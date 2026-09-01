@@ -38,6 +38,11 @@ vida-conecta:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
   video:
     join-window-minutes-before: ${VIDEO_JOIN_WINDOW_MINUTES_BEFORE:10}
+  mail:
+    from: ${MAIL_FROM:noreply@localhost}
+    frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:5173}
+    ses-enabled: ${SES_ENABLED:false}
+    aws-region: ${AWS_REGION:us-east-1}
 
 springdoc:
   swagger-ui:

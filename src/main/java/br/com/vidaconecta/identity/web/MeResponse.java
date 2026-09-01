@@ -1,6 +1,7 @@
 package br.com.vidaconecta.identity.web;
 
 import br.com.vidaconecta.identity.api.Role;
+import br.com.vidaconecta.identity.domain.AdminProfile;
 import br.com.vidaconecta.identity.domain.DoctorProfile;
 import br.com.vidaconecta.identity.domain.PatientProfile;
 import br.com.vidaconecta.identity.domain.User;
@@ -45,7 +46,16 @@ public record MeResponse(
 				profile.getSpecialty());
 	}
 
-	public static MeResponse admin(User user) {
-		return new MeResponse(user.getId(), user.getEmail(), user.getRole(), null, null, null, null, null, null);
+	public static MeResponse admin(User user, AdminProfile profile) {
+		return new MeResponse(
+				user.getId(),
+				user.getEmail(),
+				user.getRole(),
+				profile == null ? null : profile.getFullName(),
+				null,
+				null,
+				null,
+				null,
+				null);
 	}
 }

@@ -43,6 +43,9 @@ public class User {
 	@OneToOne(mappedBy = "user")
 	private DoctorProfile doctorProfile;
 
+	@OneToOne(mappedBy = "user")
+	private AdminProfile adminProfile;
+
 	protected User() {
 	}
 
@@ -87,11 +90,19 @@ public class User {
 		return doctorProfile;
 	}
 
+	public AdminProfile getAdminProfile() {
+		return adminProfile;
+	}
+
 	public void attachPatientProfile(PatientProfile profile) {
 		this.patientProfile = profile;
 	}
 
 	public void attachDoctorProfile(DoctorProfile profile) {
 		this.doctorProfile = profile;
+	}
+
+	public void attachAdminProfile(AdminProfile profile) {
+		this.adminProfile = profile;
 	}
 }

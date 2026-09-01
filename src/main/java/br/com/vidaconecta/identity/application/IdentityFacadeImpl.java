@@ -2,6 +2,7 @@ package br.com.vidaconecta.identity.application;
 
 import br.com.vidaconecta.identity.api.IdentityFacade;
 import br.com.vidaconecta.identity.api.Role;
+import br.com.vidaconecta.identity.infrastructure.AdminProfileRepository;
 import br.com.vidaconecta.identity.infrastructure.DoctorProfileRepository;
 import br.com.vidaconecta.identity.infrastructure.PatientProfileRepository;
 import br.com.vidaconecta.identity.infrastructure.UserRepository;
@@ -18,14 +19,17 @@ public class IdentityFacadeImpl implements IdentityFacade {
 	private final UserRepository userRepository;
 	private final DoctorProfileRepository doctorProfileRepository;
 	private final PatientProfileRepository patientProfileRepository;
+	private final AdminProfileRepository adminProfileRepository;
 
 	public IdentityFacadeImpl(
 			UserRepository userRepository,
 			DoctorProfileRepository doctorProfileRepository,
-			PatientProfileRepository patientProfileRepository) {
+			PatientProfileRepository patientProfileRepository,
+			AdminProfileRepository adminProfileRepository) {
 		this.userRepository = userRepository;
 		this.doctorProfileRepository = doctorProfileRepository;
 		this.patientProfileRepository = patientProfileRepository;
+		this.adminProfileRepository = adminProfileRepository;
 	}
 
 	@Override
@@ -60,5 +64,11 @@ public class IdentityFacadeImpl implements IdentityFacade {
 		return doctorProfileRepository.findAllByOrderByFullNameAsc().stream()
 				.map(profile -> new DoctorView(profile.getUserId(), profile.getFullName(), profile.getCrm(), profile.getSpecialty()))
 				.toList();
+	}
+
+	@Override
+	public Optional<AdminView> findAdmin(UUID userId) {
+		return adminProfileRepository.findByUserId(userId)
+				.map(profile -> new AdminView(profile.getUserId(), profile.getFullName()));
 	}
 }

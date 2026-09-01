@@ -16,6 +16,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -40,6 +41,9 @@ public abstract class AbstractIntegrationTest {
 
 	@Autowired
 	protected MockMvc mockMvc;
+
+	@Autowired
+	protected JdbcTemplate jdbcTemplate;
 
 	protected String uniqueSuffix() {
 		return UUID.randomUUID().toString().substring(0, 8);
@@ -70,18 +74,46 @@ public abstract class AbstractIntegrationTest {
 	}
 
 	protected String registerDoctor(String email, String crm, String specialty) throws Exception {
-		MvcResult result = mockMvc.perform(post("/api/v1/auth/register")
+		String adminToken = registerAdmin("admin." + uniqueSuffix() + "@vidaconecta.test");
+		MvcResult invite = mockMvc.perform(post("/api/v1/admin/doctors/invites")
+						.header("Authorization", bearer(adminToken))
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
 								{
 								  "email": "%s",
+								  "fullName": "Dra. %s"
+								}
+								""".formatted(email, specialty)))
+				.andExpect(status().isCreated())
+				.andReturn();
+		String inviteToken = JsonPath.read(body(invite), "$.token");
+		MvcResult result = mockMvc.perform(post("/api/v1/auth/register/doctor")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "token": "%s",
 								  "password": "password123",
-								  "role": "MEDICO",
-								  "fullName": "Dra. %s",
 								  "crm": "%s",
 								  "specialty": "%s"
 								}
-								""".formatted(email, specialty, crm, specialty)))
+								""".formatted(inviteToken, crm, specialty)))
+				.andExpect(status().isCreated())
+				.andReturn();
+		return tokenFrom(result);
+	}
+
+	protected String registerAdmin(String email) throws Exception {
+		UUID bootstrap = UUID.fromString(jdbcTemplate.queryForObject("select token::text from admin_bootstrap_tokens limit 1", String.class));
+		MvcResult result = mockMvc.perform(post("/api/v1/auth/register/admin")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "token": "%s",
+								  "email": "%s",
+								  "password": "password123",
+								  "fullName": "Admin Teste"
+								}
+								""".formatted(bootstrap, email)))
 				.andExpect(status().isCreated())
 				.andReturn();
 		return tokenFrom(result);

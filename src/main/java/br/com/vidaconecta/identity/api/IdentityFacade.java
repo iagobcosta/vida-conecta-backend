@@ -18,10 +18,13 @@ public interface IdentityFacade {
 
 	List<DoctorView> listDoctors();
 
+	Optional<AdminView> findAdmin(UUID userId);
+
 	default String displayName(UUID userId) {
 		return findDoctor(userId)
 				.map(DoctorView::fullName)
 				.or(() -> findPatient(userId).map(PatientView::fullName))
+				.or(() -> findAdmin(userId).map(AdminView::fullName))
 				.orElse("Usuário");
 	}
 
@@ -29,5 +32,8 @@ public interface IdentityFacade {
 	}
 
 	record PatientView(UUID userId, String fullName, String cpf) {
+	}
+
+	record AdminView(UUID userId, String fullName) {
 	}
 }

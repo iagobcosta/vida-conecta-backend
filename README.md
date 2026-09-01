@@ -50,6 +50,10 @@ docker compose up -d
 | `JWT_SECRET` | chave local de desenvolvimento (≥ 32 caracteres) |
 | `EHR_ENCRYPTION_KEY` | Base64 de 32 bytes |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` |
+| `FRONTEND_BASE_URL` | `http://localhost:5173` (link dos convites) |
+| `SES_ENABLED` | `false` (em `true`, envia convite pelo Amazon SES) |
+| `MAIL_FROM` | remetente verificado no SES |
+| `AWS_REGION` | `us-east-1` |
 
 ## Testes
 
@@ -61,7 +65,8 @@ Os testes de integração sobem PostgreSQL via Testcontainers. `ModularityTests`
 
 ## API (v1)
 
-- `POST /api/v1/auth/register` · `POST /api/v1/auth/login` · `GET /api/v1/auth/me`
+- `POST /api/v1/auth/register` (paciente) · `POST /api/v1/auth/register/admin` · `POST /api/v1/auth/register/doctor` · `GET /api/v1/auth/invites/{token}` · `POST /api/v1/auth/login` · `GET /api/v1/auth/me`
+- `GET /api/v1/admin/bootstrap-token` · `GET|POST /api/v1/admin/doctors/invites` · `GET /api/v1/admin/doctors`
 - `GET /api/v1/doctors` · `GET /api/v1/doctors/{id}/availability` · `GET /api/v1/doctors/{id}/slots`
 - `GET|POST /api/v1/me/availability` · `DELETE /api/v1/me/availability/{id}`
 - `POST /api/v1/appointments` · `GET /api/v1/appointments` · `GET /api/v1/appointments/{id}` · `POST .../confirm` · `POST .../cancel` · `POST .../complete`
@@ -71,6 +76,12 @@ Os testes de integração sobem PostgreSQL via Testcontainers. `ModularityTests`
 - `POST /api/v1/prescriptions` · `GET /api/v1/prescriptions`
 - `POST /api/v1/video/appointments/{id}/token`
 
-Cadastro de médico e paciente usa o mesmo `register`, com `role` `MEDICO` ou `PACIENTE`. JWT no header `Authorization: Bearer <token>`.
+Cadastro público (`POST /api/v1/auth/register`) é exclusivo para pacientes.
+
+O primeiro administrador usa o token UUID guardado em `admin_bootstrap_tokens` (seed local: `b2222222-2222-4222-8222-222222222222`) em `POST /api/v1/auth/register/admin`. Depois do uso o token é apagado e um novo é gravado; a resposta devolve `nextBootstrapToken`. Administradores autenticados consultam o token vigente em `GET /api/v1/admin/bootstrap-token`.
+
+Médicos não se cadastram sozinhos: o admin convida com nome e e-mail (`POST /api/v1/admin/doctors/invites`). O convite vai por e-mail (AWS SES quando `SES_ENABLED=true`) com o link `/cadastro/medico?token=...`. O médico conclui em `POST /api/v1/auth/register/doctor`.
+
+JWT no header `Authorization: Bearer <token>`.
 
 O médico precisa informar um motivo (mínimo 10 caracteres) ao cancelar. O paciente recebe a notificação com o motivo e um atalho para reagendar.
