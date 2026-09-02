@@ -1,3 +1,49 @@
 spring:
   application:
     name: vida-conecta-backend
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/vida_conecta}
+    username: ${DATABASE_USERNAME:vida_conecta}
+    password: ${DATABASE_PASSWORD:vida_conecta}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: when-authorized
+
+vida-conecta:
+  jwt:
+    secret: ${JWT_SECRET:local-dev-jwt-secret-key-32bytes-min}
+    expiration-minutes: ${JWT_EXPIRATION_MINUTES:30}
+  ehr:
+    encryption-key: ${EHR_ENCRYPTION_KEY:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS=https://vida-conecta-frontend.vercel.app,https://*.vercel.app,http://localhost:5173}
+  video:
+    join-window-minutes-before: ${VIDEO_JOIN_WINDOW_MINUTES_BEFORE:10}
+  mail:
+    from: ${MAIL_FROM:no-reply@darcaltech.com.br}
+    frontend-base-url: ${FRONTEND_BASE_URL=https://vida-conecta-frontend.vercel.app}
+    ses-enabled: ${SES_ENABLED:true}
+    aws-region: ${AWS_REGION:us-east-1}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html

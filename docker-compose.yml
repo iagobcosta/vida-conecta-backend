@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: vida_conecta
+      POSTGRES_USER: vida_conecta
+      POSTGRES_PASSWORD: vida_conecta
+    ports:
+      - "5432:5432"
+    volumes:
+      - vida_conecta_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vida_conecta -d vida_conecta"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  vida_conecta_pg:
