@@ -54,6 +54,7 @@ docker compose up -d
 | `SES_ENABLED` | `false` (em `true`, envia convite pelo Amazon SES) |
 | `MAIL_FROM` | remetente verificado no SES |
 | `AWS_REGION` | `us-east-1` |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | credenciais IAM com permissão `ses:SendEmail` (não versionar) |
 
 ## Testes
 
@@ -81,6 +82,32 @@ Cadastro público (`POST /api/v1/auth/register`) é exclusivo para pacientes.
 O primeiro administrador usa o token UUID guardado em `admin_bootstrap_tokens` (seed local: `b2222222-2222-4222-8222-222222222222`) em `POST /api/v1/auth/register/admin`. Depois do uso o token é apagado e um novo é gravado; a resposta devolve `nextBootstrapToken`. Administradores autenticados consultam o token vigente em `GET /api/v1/admin/bootstrap-token`.
 
 Médicos não se cadastram sozinhos: o admin convida com nome e e-mail (`POST /api/v1/admin/doctors/invites`). O convite vai por e-mail (AWS SES quando `SES_ENABLED=true`) com o link `/cadastro/medico?token=...`. O médico conclui em `POST /api/v1/auth/register/doctor`.
+
+Para o SES, **não** grave Access Key no YAML.
+
+**Na sua máquina, sem e-mail real:** deixe `SES_ENABLED` em `false` (padrão). O convite aparece no log da API e o admin vê o link na tela.
+
+**Na sua máquina, com SES de verdade:**
+
+1. No console AWS, verifique o remetente (`MAIL_FROM`). Em sandbox, verifique também o e-mail do médico de teste.
+2. Grave as credenciais uma vez (não precisa exportar a cada execução):
+
+```bash
+aws configure
+```
+
+Isso cria `~/.aws/credentials`. O `SesClient` lê esse arquivo automaticamente.
+
+3. Suba a API com o SES ligado:
+
+```bash
+export SES_ENABLED=true
+export MAIL_FROM=seu-email-verificado@seudominio.com
+export AWS_REGION=us-east-1
+./mvnw spring-boot:run
+```
+
+Se não usar o AWS CLI, exporte também `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY` no mesmo terminal. Em EC2/ECS/Lambda as chaves podem ficar na role IAM.
 
 O painel do administrador (`GET /api/v1/admin/insights`) devolve totais de consultas, evolução dos últimos 30 dias (fuso `America/Sao_Paulo`), especialidades e o censo do sistema. `PATCH /api/v1/admin/doctors/{id}/enabled` ativa ou desativa o médico: conta desativada some da listagem pública e não consegue entrar.
 
