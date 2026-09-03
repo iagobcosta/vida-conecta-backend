@@ -27,8 +27,8 @@
     </appender>
 
     <!-- ===== PROFILES ===== -->
-    <springProfile name="dev">
-        <root level="DEBUG">
+    <springProfile name="default, dev">
+        <root level="INFO">
             <appender-ref ref="CONSOLE" />
         </root>
     </springProfile>

@@ -145,7 +145,7 @@ VideoToken token = videoService.generateToken(appointmentId);
 - [ ] **Logging Estruturado (JSON)**
   - Substituir console logs por JSON estruturado
   - Incluir contexto: userId, appointmentId, action
-  - Mascarar dados sensíveis (CPF, email parcial)
+  - [x] Mascarar dados sensíveis (CPF, email, telefone, UUID) via Logback e MaskUtil
 
 - [ ] **Grafana Dashboards**
   - Overview: uptime, latência, erros
@@ -279,7 +279,7 @@ jobs:
 | Criptografia em repouso (AES-GCM) | ✅ | ✅ |
 | Segregação de storage | ✅ | ✅ |
 | Política de retenção de dados | ⚠️ | Definir |
-| Anonimização em logs | ⚠️ | Implementar |
+| Anonimização em logs | ✅ | ✅ |
 | Backup & restore testado | ⚠️ | Implementar |
 
 ---

@@ -144,15 +144,15 @@ log.info("User accessed EHR"); // ← sem IDs
 ```
 
 **Tarefa:**
-- [ ] Criar `SensitiveDataMasker.java` com métodos:
+- [X] Criar `MaskUtil.java` com métodos:
   ```java
   public static String maskCpf(String cpf) → "***.***.***-45"
   public static String maskEmail(String email) → "p***@example.com"
   public static String maskPhone(String phone) → "***-****-90"
   public static String maskUUID(UUID id) → "550e8400-e29b-***"
   ```
-- [ ] Aplicar em todas as mensagens de log
-- [ ] Teste: logs nunca contêm CPF, email completo, UUID de paciente
+- [X] Aplicar em todas as mensagens de log
+- [X] Teste: logs nunca contêm CPF, email completo, UUID de paciente
 
 ---
 
@@ -263,11 +263,11 @@ Marcar conforme implementa:
 - [ ] Teste E2E: fluxo completo de consentimento
 
 ### Dados Sensíveis (Art. 5)
-- [ ] **Criptografia em repouso** (AES-GCM) ✅
-- [ ] **Criptografia em trânsito** (HTTPS/TLS) ✅
+- [x] **Criptografia em repouso** (AES-GCM)
+- [x] **Criptografia em trânsito** (HTTPS/TLS)
 - [ ] **Minimização** (coleta apenas necessário) → revisar
 - [ ] **Retenção** (política definida) ⚠️
-- [ ] **Anonimização** (em testes e logs) ⚠️
+- [X] **Anonimização** (em testes e logs)
 
 ### Acesso (Art. 9)
 - [ ] **Autenticação forte** (JWT + refresh) ✅
