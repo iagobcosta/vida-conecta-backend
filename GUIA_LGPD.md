@@ -157,25 +157,18 @@ log.info("User accessed EHR"); // ← sem IDs
 ---
 
 ### 3. Consentimento: Registrar Tentativas Negadas
-**Status:** Parcialmente implementado
+**Status:** Totalmente implementado ✅
 
 ```java
-// EhrService.list() lança ForbiddenException
-// Mas não registra no audit que a tentativa foi negada
-
-// Precisa:
-auditRepository.save(EhrAccessAudit.record(
-    currentUser.id(), 
-    patientId, 
-    appointmentId, 
-    "READ_DENIED"  // ← novo tipo de ação
-));
+// EhrAuditService independente com REQUIRES_NEW
+ehrAuditService.record(currentUser.id(), patientId, appointmentId, "READ_DENIED");
+throw new ForbiddenException("Acesso negado");
 ```
 
 **Tarefa:**
-- [ ] Adicionar coluna `result` em `ehr_access_audit` (SUCCESS/DENIED)
-- [ ] Registrar DENIED antes de lançar exceção
-- [ ] Teste: acesso negado é registrado com result=DENIED
+- [x] Adicionar coluna `result` em `ehr_access_audit` (SUCCESS/DENIED) ou ação `READ_DENIED`
+- [x] Registrar DENIED antes de lançar exceção
+- [x] Teste: acesso negado é registrado com ação READ_DENIED
 
 ---
 
@@ -270,20 +263,20 @@ Marcar conforme implementa:
 - [X] **Anonimização** (em testes e logs)
 
 ### Acesso (Art. 9)
-- [ ] **Autenticação forte** (JWT + refresh) ✅
-- [ ] **Autorização por papel** (RBAC) ✅
-- [ ] **Validação de consentimento** antes de cada acesso ✅
-- [ ] **Acesso cross-paciente impedido** ✅
-- [ ] **Auditoria de quem acessou** ✅
-- [ ] **Registro de quando** ✅
-- [ ] **Registro do resultado** (sucesso/falha) ⚠️
+- [x] **Autenticação forte** (JWT + refresh) ✅
+- [x] **Autorização por papel** (RBAC) ✅
+- [x] **Validação de consentimento** antes de cada acesso ✅
+- [x] **Acesso cross-paciente impedido** ✅
+- [x] **Auditoria de quem acessou** ✅
+- [x] **Registro de quando** ✅
+- [x] **Registro do resultado** (sucesso/falha) ✅
 
 ### Direitos do Titular (Art. 17-18)
 - [ ] Direito de **acessar** seus dados (GET /patients/{id}/ehr)
-- [ ] Direito de **corrigir** (não implementado → verificar escopo)
-- [ ] Direito de **deletar** (soft delete → verificar escopo)
-- [ ] Direito de **portabilidade** (não implementado → verificar escopo)
-- [ ] Direito de **revogar consentimento** ✅
+- [ ] Direito de **corrigir** dados cadastrais
+- [ ] Direito de **deletar/esquecimento** (Criar `DELETE /api/v1/me` para soft delete e anonimização de PII)
+- [ ] Direito de **portabilidade** (Criar `GET /api/v1/me/export` para baixar JSON consolidado)
+- [x] Direito de **revogar consentimento** ✅
 
 ### Documentação
 - [ ] Mapeamento de dados: quais são sensíveis?

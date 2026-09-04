@@ -1,15 +1,15 @@
 package br.com.vidaconecta;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MvcResult;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import org.junit.jupiter.api.Test;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MvcResult;
 
 class ClinicalFlowTests extends AbstractIntegrationTest {
 
@@ -68,10 +68,16 @@ class ClinicalFlowTests extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.length()").value(1))
 				.andExpect(jsonPath("$[0].content").value("Paciente com histórico de hipertensão."));
 
+		String doctorCToken = registerDoctor("medico.intruso@exemplo.com", "99999", "Clinico");
+
+		mockMvc.perform(get("/api/v1/patients/" + patientId + "/ehr")
+						.header("Authorization", bearer(doctorCToken)))
+				.andExpect(status().isForbidden()); // Tomou 403!
+
 		mockMvc.perform(get("/api/v1/ehr/audit").param("patientId", patientId)
 						.header("Authorization", bearer(patientToken)))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$[0].action").exists())
+				.andExpect(jsonPath("$[0].action").value("READ_DENIED"))
 				.andExpect(jsonPath("$[0].actorName").exists());
 
 		mockMvc.perform(post("/api/v1/prescriptions")
