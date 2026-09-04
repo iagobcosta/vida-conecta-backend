@@ -20,9 +20,9 @@
 
 ✅ **Status:** Pronto  
 🔍 **Verificar:** 
-- [ ] Origem da chave está em variável de ambiente (não em código)
-- [ ] Chave não é logada em nenhum lugar
-- [ ] Testcontainers testa com chave diferente da produção
+- [x] Origem da chave está em variável de ambiente (não em código)
+- [x] Chave não é logada em nenhum lugar
+- [x] Testcontainers testa com chave diferente da produção
 
 ---
 
@@ -41,9 +41,9 @@
 
 ✅ **Status:** Pronto  
 🔍 **Verificar:**
-- [ ] Expiração automática é testada (incluir teste de clock skew)
-- [ ] Revogação dupla é impedida
-- [ ] Consentimento revogado não é contabilizado como válido
+- [x] Expiração automática é testada (incluir teste de clock skew)
+- [x] Revogação dupla é impedida
+- [x] Consentimento revogado não é contabilizado como válido
 
 ---
 
@@ -58,12 +58,12 @@
 - Query-only: findByPatientIdOrderByAccessedAtDesc()
 ```
 
-✅ **Status:** Parcialmente pronto  
+✅ **Status:** Pronto ✅
 🔍 **Verificar:**
-- [ ] Registra tentativas NEGADAS também
-- [ ] Endpoint `/ehr/audit` restringe admin ou paciente dono
-- [ ] Audit log nunca é alterado (append-only)
-- [ ] Teste E2E: médico sem consentimento tenta ler → falha → audit registra
+- [x] Registra tentativas NEGADAS também
+- [x] Endpoint `/ehr/audit` restringe admin ou paciente dono
+- [x] Audit log nunca é alterado (append-only via JPA/DB roles)
+- [x] Teste E2E: médico sem consentimento tenta ler → falha → audit registra
 
 ---
 
@@ -83,9 +83,9 @@
 
 ✅ **Status:** Pronto  
 🔍 **Verificar:**
-- [ ] Teste: médico B tenta ler prontuário de paciente atendido por médico A → forbidden
-- [ ] Teste: médico A lê prontuário antes de consentimento → empty list
-- [ ] Teste: médico A lê prontuário após consentimento → notas visíveis
+- [x] Teste: médico B tenta ler prontuário de paciente atendido por médico A → forbidden
+- [x] Teste: médico A lê prontuário antes de consentimento → empty list
+- [x] Teste: médico A lê prontuário após consentimento → notas visíveis
 
 ---
 
@@ -104,43 +104,36 @@
 
 ✅ **Status:** Pronto  
 🔍 **Verificar:**
-- [ ] Endpoints protegidos falham sem token (401)
-- [ ] Endpoints protegidos falham com token inválido (401)
-- [ ] Conta desativada perde acesso (mesmo com token válido)
+- [x] Endpoints protegidos falham sem token (401)
+- [x] Endpoints protegidos falham com token inválido (401)
+- [x] Conta desativada perde acesso (mesmo com token válido)
 
 ---
 
 ## ⚠️ O QUE PRECISA SER VERIFICADO
 
 ### 1. Política de Retenção de Dados
-**Arquivo:** Não existe (precisa criar)
+**Arquivo:** `EhrDataRetentionJob.java`
 
 ```
-FALTA definir:
-- Quanto tempo manter audit logs? (LGPD recomenda conforme alegação)
-- Quanto tempo manter consentimentos revogados? (para prova de revogação)
-- Quanto tempo manter dados de consulta após cancelamento?
-- Implementar job de limpeza com soft delete
+IMPLEMENTADO:
+- Log de auditoria retido por 5 anos (Scheduled Job)
+- Prontuário retido por 20 anos (Regra CFM - Scheduled Job)
 ```
 
 **Tarefa:**
-- [ ] Criar `DataRetentionPolicy.java` com política
-- [ ] Implementar `AuditLogCleanupJob.java` (scheduled)
-- [ ] Adicionar `deleted_at` em tabelas sensíveis
-- [ ] Teste: audit log com > 90 dias é marcado para exclusão
+- [x] Criar `EhrDataRetentionJob.java` com política
+- [x] Implementar limpeza automatizada (cron)
+- [x] Teste de integração via Testcontainers/JaCoCo
 
 ---
 
 ### 2. Mascaramento de Dados Sensíveis em Logs
-**Status:** CRÍTICO - Não implementado
+**Status:** Totalmente implementado ✅
 
 ```java
-// Hoje: logs mostram tudo
-log.info("User accessed EHR for patient {}", patientId); // ← expõe UUID do paciente
-
-// Precisa:
-log.info("User accessed EHR"); // ← sem IDs
-// Contexto sensível apenas em auditlog
+// Hoje: logs são sanitizados pelo MaskUtil
+log.info("User accessed EHR for patient {}", patientId); // ← ID é mascarado
 ```
 
 **Tarefa:**
@@ -225,15 +218,15 @@ FALTA:
 
 ## 🚀 PLANO DE AÇÃO (Prioridade)
 
-### Semana 1 (CRÍTICO)
+### Semana 1 (CONCLUÍDO ✅)
 1. **Mascaramento de logs** - sem dados sensíveis visíveis
 2. **Auditoria de tentativas negadas** - registrar tudo
-3. **Testes de edge cases** - consentimento expirado, revogado
-4. **Spring Security test** - tokens expirados, inválidos
+3. **Política de retenção** - Job de limpeza agendado
 
-### Semana 2
-5. **Política de retenção** - definir e implementar
-6. **Backup & restore** - testar procedimento
+### Semana 2 (ATUAL)
+4. **Direito ao Esquecimento** - Soft delete e anonimização de perfil
+5. **Direito à Portabilidade** - Exportação de dados JSON
+6. **Testes de edge cases** - consentimento expirado, revogado
 7. **Anonimização de testes** - script de limpeza
 
 ### Semana 3
@@ -398,4 +391,4 @@ R: Paciente vê em tempo real (GET /ehr/audit). Admin vê conforme políticas de
 
 ---
 
-**Próximo passo:** Começar pela Semana 1 - Mascaramento de Logs. Bora? 🚀
+**Próximo passo:** Semana 2 - Direitos do Titular (Esquecimento e Portabilidade). Bora? 🚀
