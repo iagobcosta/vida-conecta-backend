@@ -259,7 +259,7 @@ Marcar conforme implementa:
 - [x] **Criptografia em repouso** (AES-GCM)
 - [x] **Criptografia em trânsito** (HTTPS/TLS)
 - [ ] **Minimização** (coleta apenas necessário) → revisar
-- [ ] **Retenção** (política definida) ⚠️
+- [x] **Retenção** (política via Cron: Auditoria 5 anos, Prontuário 20 anos) ✅
 - [X] **Anonimização** (em testes e logs)
 
 ### Acesso (Art. 9)

@@ -278,7 +278,7 @@ jobs:
 | Auditoria de prontuário | ✅ | ✅ |
 | Criptografia em repouso (AES-GCM) | ✅ | ✅ |
 | Segregação de storage | ✅ | ✅ |
-| Política de retenção de dados | ⚠️ | Definir |
+| Política de retenção de dados | ✅ | Job agendado (Audit 5 anos / Prontuário 20 anos) |
 | Anonimização em logs | ✅ | ✅ |
 | Backup & restore testado | ⚠️ | Implementar |
 
