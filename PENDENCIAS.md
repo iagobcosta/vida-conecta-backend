@@ -297,7 +297,7 @@ jobs:
 
 ## 📞 PRÓXIMAS AÇÕES
 
-1. **Hoje:** LGPD Direitos do Titular (Esquecimento e Portabilidade)
+1. **Hoje:** LGPD Direitos do Titular (Esquecimento pendente, Portabilidade Concluída ✅)
 2. **Esta semana:** Integração SFU real
 3. **Próxima semana:** Observabilidade
 4. **Em 2 semanas:** DevSecOps + Documentação

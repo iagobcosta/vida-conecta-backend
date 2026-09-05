@@ -72,6 +72,18 @@ public class IdentityFacadeImpl implements IdentityFacade {
 	}
 
 	@Override
+	public Optional<PatientExportView> exportPatient(UUID userId) {
+		return patientProfileRepository.findByUserId(userId)
+				.map(profile -> new PatientExportView(
+						profile.getUserId(),
+						profile.getFullName(),
+						profile.getCpf(),
+						userRepository.findById(userId).map(br.com.vidaconecta.identity.domain.User::getEmail).orElse(null),
+						profile.getBirthDate(),
+						profile.getPhone()));
+	}
+
+	@Override
 	public List<DoctorView> listDoctors() {
 		return listAllDoctors().stream().filter(DoctorView::enabled).toList();
 	}

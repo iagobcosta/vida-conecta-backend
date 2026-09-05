@@ -1,5 +1,11 @@
 package br.com.vidaconecta.prescription.application;
 
+import java.util.List;
+import java.util.UUID;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import br.com.vidaconecta.identity.api.CurrentUser;
 import br.com.vidaconecta.identity.api.IdentityFacade;
 import br.com.vidaconecta.notification.api.NotificationFacade;
@@ -13,10 +19,6 @@ import br.com.vidaconecta.prescription.web.PrescriptionResponse;
 import br.com.vidaconecta.scheduling.api.SchedulingFacade;
 import br.com.vidaconecta.shared.api.ForbiddenException;
 import br.com.vidaconecta.shared.api.NotFoundException;
-import java.util.List;
-import java.util.UUID;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PrescriptionService {
@@ -103,5 +105,13 @@ public class PrescriptionService {
 				prescription.getAppointmentId(),
 				prescription.getIssuedAt(),
 				items);
+	}
+
+	@Transactional(readOnly = true)
+	public List<PrescriptionResponse> listByPatient(UUID patientId) {
+		return prescriptionRepository.findByPatientIdOrderByIssuedAtDesc(patientId)
+				.stream()
+				.map(this::toResponse)
+				.toList();
 	}
 }

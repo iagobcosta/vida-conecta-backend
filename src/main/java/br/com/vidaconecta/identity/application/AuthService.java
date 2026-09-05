@@ -1,5 +1,13 @@
 package br.com.vidaconecta.identity.application;
 
+import java.util.Locale;
+
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+
 import br.com.vidaconecta.identity.api.CurrentUser;
 import br.com.vidaconecta.identity.api.Role;
 import br.com.vidaconecta.identity.domain.AdminProfile;
@@ -17,11 +25,6 @@ import br.com.vidaconecta.identity.web.TokenResponse;
 import br.com.vidaconecta.shared.api.BusinessException;
 import br.com.vidaconecta.shared.api.ConflictException;
 import br.com.vidaconecta.shared.api.NotFoundException;
-import java.util.Locale;
-import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AuthService {
@@ -51,7 +54,8 @@ public class AuthService {
 	@Transactional
 	public TokenResponse register(RegisterRequest request) {
 		if (request.role() != Role.PACIENTE) {
-			throw new BusinessException("O cadastro público é exclusivo para pacientes. Médicos entram por convite do administrador");
+			throw new BusinessException(
+					"O cadastro público é exclusivo para pacientes. Médicos entram por convite do administrador");
 		}
 		String email = request.email().trim().toLowerCase(Locale.ROOT);
 		if (userRepository.existsByEmailIgnoreCase(email)) {
@@ -104,7 +108,8 @@ public class AuthService {
 		if (patientProfileRepository.existsByCpf(cpf)) {
 			throw new ConflictException("CPF já cadastrado");
 		}
-		PatientProfile profile = PatientProfile.of(user, request.fullName().trim(), cpf, request.birthDate(), request.phone());
+		PatientProfile profile = PatientProfile.of(user, request.fullName().trim(), cpf, request.birthDate(),
+				request.phone());
 		patientProfileRepository.save(profile);
 		user.attachPatientProfile(profile);
 	}
@@ -112,4 +117,5 @@ public class AuthService {
 	private boolean isBlank(String value) {
 		return value == null || value.isBlank();
 	}
+
 }

@@ -265,10 +265,10 @@ Marcar conforme implementa:
 - [x] **Registro do resultado** (sucesso/falha) ✅
 
 ### Direitos do Titular (Art. 17-18)
-- [ ] Direito de **acessar** seus dados (GET /patients/{id}/ehr)
+- [x] Direito de **acessar** seus dados (GET /patients/{id}/ehr)
 - [ ] Direito de **corrigir** dados cadastrais
 - [ ] Direito de **deletar/esquecimento** (Criar `DELETE /api/v1/me` para soft delete e anonimização de PII)
-- [ ] Direito de **portabilidade** (Criar `GET /api/v1/me/export` para baixar JSON consolidado)
+- [x] Direito de **portabilidade** (Endpoint GET /api/v1/auth/me/export implementado) ✅
 - [x] Direito de **revogar consentimento** ✅
 
 ### Documentação

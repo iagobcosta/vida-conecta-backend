@@ -16,6 +16,8 @@ public interface IdentityFacade {
 
 	Optional<PatientView> findPatient(UUID userId);
 
+	Optional<PatientExportView> exportPatient(UUID userId);
+
 	List<DoctorView> listDoctors();
 
 	List<DoctorView> listAllDoctors();
@@ -46,6 +48,9 @@ public interface IdentityFacade {
 	}
 
 	record PatientView(UUID userId, String fullName, String cpf) {
+	}
+
+	record PatientExportView(UUID userId, String fullName, String cpf, String email, java.time.LocalDate birthDate, String phone) {
 	}
 
 	record AdminView(UUID userId, String fullName) {
