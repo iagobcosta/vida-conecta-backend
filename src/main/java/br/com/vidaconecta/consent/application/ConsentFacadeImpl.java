@@ -25,4 +25,12 @@ public class ConsentFacadeImpl implements ConsentFacade {
 				.filter(consent -> consent.isActive(now))
 				.anyMatch(consent -> consent.covers(doctorId, appointmentId));
 	}
+
+	@Override
+	@Transactional
+	public void revokeAllFromPatient(UUID patientId) {
+		consentRepository.findByPatientIdOrderByGrantedAtDesc(patientId).stream()
+				.filter(consent -> consent.getRevokedAt() == null)
+				.forEach(Consent::revoke);
+	}
 }

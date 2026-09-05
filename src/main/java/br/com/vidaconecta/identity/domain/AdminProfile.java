@@ -42,4 +42,10 @@ public class AdminProfile {
 	public String getFullName() {
 		return fullName;
 	}
+
+	public void update(String fullName) {
+		if (fullName != null && !fullName.isBlank()) {
+			this.fullName = fullName.trim();
+		}
+	}
 }

@@ -66,4 +66,22 @@ public class PatientProfile {
 	public String getPhone() {
 		return phone;
 	}
+
+	public void update(String fullName, String phone, LocalDate birthDate) {
+		if (fullName != null && !fullName.isBlank()) {
+			this.fullName = fullName.trim();
+		}
+		if (phone != null) {
+			this.phone = phone.trim();
+		}
+		if (birthDate != null) {
+			this.birthDate = birthDate;
+		}
+	}
+
+	public void anonymize() {
+		this.fullName = "Usuário Deletado";
+		this.cpf = this.userId.toString().replace("-", "").substring(0, 11);
+		this.phone = null;
+	}
 }

@@ -35,6 +35,7 @@ public class AuthService {
 	private final AdminProfileRepository adminProfileRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final JwtService jwtService;
+	private final br.com.vidaconecta.consent.api.ConsentFacade consentFacade;
 
 	public AuthService(
 			UserRepository userRepository,
@@ -42,13 +43,33 @@ public class AuthService {
 			DoctorProfileRepository doctorProfileRepository,
 			AdminProfileRepository adminProfileRepository,
 			PasswordEncoder passwordEncoder,
-			JwtService jwtService) {
+			JwtService jwtService,
+			br.com.vidaconecta.consent.api.ConsentFacade consentFacade) {
 		this.userRepository = userRepository;
 		this.patientProfileRepository = patientProfileRepository;
 		this.doctorProfileRepository = doctorProfileRepository;
 		this.adminProfileRepository = adminProfileRepository;
 		this.passwordEncoder = passwordEncoder;
 		this.jwtService = jwtService;
+		this.consentFacade = consentFacade;
+	}
+
+	@Transactional
+	public void deleteAccount(CurrentUser currentUser) {
+		User user = userRepository.findById(currentUser.id())
+				.orElseThrow(() -> new NotFoundException("Usuário não encontrado"));
+		
+		if (user.getRole() != Role.PACIENTE) {
+			throw new BusinessException("Apenas pacientes podem excluir a própria conta por este canal.");
+		}
+		
+		PatientProfile profile = patientProfileRepository.findByUserId(user.getId())
+				.orElseThrow(() -> new NotFoundException("Perfil não encontrado"));
+		
+		user.anonymize();
+		profile.anonymize();
+		
+		consentFacade.revokeAllFromPatient(user.getId());
 	}
 
 	@Transactional
@@ -94,6 +115,31 @@ public class AuthService {
 			return MeResponse.doctor(user, profile);
 		}
 		AdminProfile profile = adminProfileRepository.findByUserId(user.getId()).orElse(null);
+		return MeResponse.admin(user, profile);
+	}
+
+	@Transactional
+	public MeResponse updateProfile(CurrentUser currentUser, br.com.vidaconecta.identity.web.UpdateProfileRequest request) {
+		User user = userRepository.findById(currentUser.id())
+				.orElseThrow(() -> new NotFoundException("Usuário não encontrado"));
+
+		if (user.getRole() == Role.PACIENTE) {
+			PatientProfile profile = patientProfileRepository.findByUserId(user.getId())
+					.orElseThrow(() -> new NotFoundException("Perfil de paciente não encontrado"));
+			profile.update(request.fullName(), request.phone(), request.birthDate());
+			return MeResponse.patient(user, profile);
+		}
+		if (user.getRole() == Role.MEDICO) {
+			DoctorProfile profile = doctorProfileRepository.findByUserId(user.getId())
+					.orElseThrow(() -> new NotFoundException("Perfil de médico não encontrado"));
+			profile.update(request.fullName(), request.specialty());
+			return MeResponse.doctor(user, profile);
+		}
+		
+		AdminProfile profile = adminProfileRepository.findByUserId(user.getId()).orElse(null);
+		if (profile != null) {
+			profile.update(request.fullName());
+		}
 		return MeResponse.admin(user, profile);
 	}
 
