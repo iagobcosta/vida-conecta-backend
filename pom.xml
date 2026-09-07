@@ -31,6 +31,14 @@
 		<spring-modulith.version>2.1.1</spring-modulith.version>
 		<springdoc.version>3.0.1</springdoc.version>
 		<aws.sdk.version>2.31.16</aws.sdk.version>
+		<!-- Sobrepõe o 11.0.24 do Spring Boot 4.1.1: CVE-2026-65182, CVE-2026-65905
+		     e CVE-2026-68525 (bypass de autenticação/autorização) só têm correção
+		     a partir do 11.0.25. Remover quando o parent alcançar essa versão. -->
+		<tomcat.version>11.0.25</tomcat.version>
+		<jacoco.version>0.8.15</jacoco.version>
+		<cyclonedx.version>2.9.3</cyclonedx.version>
+		<!-- Cobertura mínima de linhas exigida por jacoco:check. A CI sobrescreve com -Djacoco.line.minimum=... -->
+		<jacoco.line.minimum>0.00</jacoco.line.minimum>
 	</properties>
 	<dependencyManagement>
 		<dependencies>
@@ -202,6 +210,67 @@
 									<artifactId>lombok</artifactId>
 								</path>
 							</annotationProcessorPaths>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<!-- SBOM (CycloneDX) em target/bom.json: é o que a CI varre atrás de CVE. -->
+			<plugin>
+				<groupId>org.cyclonedx</groupId>
+				<artifactId>cyclonedx-maven-plugin</artifactId>
+				<version>${cyclonedx.version}</version>
+				<executions>
+					<execution>
+						<id>sbom</id>
+						<phase>package</phase>
+						<goals>
+							<goal>makeAggregateBom</goal>
+						</goals>
+					</execution>
+				</executions>
+				<configuration>
+					<outputFormat>json</outputFormat>
+					<includeRuntimeScope>true</includeRuntimeScope>
+					<includeTestScope>false</includeTestScope>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
+				<version>${jacoco.version}</version>
+				<executions>
+					<execution>
+						<id>prepare-agent</id>
+						<goals>
+							<goal>prepare-agent</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>report</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>report</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>check</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+						<configuration>
+							<rules>
+								<rule>
+									<element>BUNDLE</element>
+									<limits>
+										<limit>
+											<counter>LINE</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>${jacoco.line.minimum}</minimum>
+										</limit>
+									</limits>
+								</rule>
+							</rules>
 						</configuration>
 					</execution>
 				</executions>
