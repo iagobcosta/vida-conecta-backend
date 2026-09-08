@@ -3,6 +3,7 @@ package br.com.vidaconecta;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.startsWith;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -228,5 +229,227 @@ class IdentityTests extends AbstractIntegrationTest {
 								""".formatted(doctorEmail)))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.token").exists());
+	}
+
+	@Test
+	void shouldUpdateProfilesForPatientDoctorAndAdmin() throws Exception {
+		String suffix = uniqueSuffix();
+		String patientToken = registerPatient("upd.pac." + suffix + "@vidaconecta.test", cpf(suffix, "21"));
+		String doctorToken = registerDoctor("upd.med." + suffix + "@vidaconecta.test", "CRMU" + suffix, "Clínica Geral");
+		String adminToken = registerAdmin("upd.adm." + suffix + "@vidaconecta.test");
+
+		mockMvc.perform(patch("/api/v1/auth/me")
+						.header("Authorization", bearer(patientToken))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "fullName": "Paciente Atualizado",
+								  "phone": "85988887777",
+								  "birthDate": "1988-05-20"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.fullName").value("Paciente Atualizado"))
+				.andExpect(jsonPath("$.phone").value("85988887777"))
+				.andExpect(jsonPath("$.birthDate").value("1988-05-20"));
+
+		mockMvc.perform(patch("/api/v1/auth/me")
+						.header("Authorization", bearer(doctorToken))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "fullName": "Dra. Atualizada",
+								  "specialty": "Dermatologia"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.fullName").value("Dra. Atualizada"))
+				.andExpect(jsonPath("$.specialty").value("Dermatologia"));
+
+		mockMvc.perform(patch("/api/v1/auth/me")
+						.header("Authorization", bearer(adminToken))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{ "fullName": "Admin Atualizado" }
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.fullName").value("Admin Atualizado"));
+	}
+
+	@Test
+	void shouldAnonymizePatientAccountAndRevokeConsents() throws Exception {
+		String suffix = uniqueSuffix();
+		String patientEmail = "del.pac." + suffix + "@vidaconecta.test";
+		String patientToken = registerPatient(patientEmail, cpf(suffix, "31"));
+		String doctorToken = registerDoctor("del.med." + suffix + "@vidaconecta.test", "CRMD" + suffix, "Pediatria");
+		String doctorId = currentUserId(doctorToken).toString();
+
+		mockMvc.perform(post("/api/v1/consents")
+						.header("Authorization", bearer(patientToken))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "doctorId": "%s",
+								  "scope": "DOCTOR"
+								}
+								""".formatted(doctorId)))
+				.andExpect(status().isCreated());
+
+		mockMvc.perform(delete("/api/v1/auth/me").header("Authorization", bearer(doctorToken)))
+				.andExpect(status().isBadRequest());
+
+		mockMvc.perform(delete("/api/v1/auth/me").header("Authorization", bearer(patientToken)))
+				.andExpect(status().isNoContent());
+
+		mockMvc.perform(post("/api/v1/auth/login")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "email": "%s",
+								  "password": "password123"
+								}
+								""".formatted(patientEmail)))
+				.andExpect(status().isUnauthorized());
+
+		mockMvc.perform(get("/api/v1/auth/me").header("Authorization", bearer(patientToken)))
+				.andExpect(status().isUnauthorized());
+
+		mockMvc.perform(get("/api/v1/consents").header("Authorization", bearer(doctorToken)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].revokedAt").exists());
+	}
+
+	@Test
+	void shouldRejectInvalidPatientRegisterAndWrongPassword() throws Exception {
+		String suffix = uniqueSuffix();
+		String email = "val." + suffix + "@vidaconecta.test";
+
+		mockMvc.perform(post("/api/v1/auth/register")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "email": "%s",
+								  "password": "password123",
+								  "role": "PACIENTE",
+								  "fullName": "Sem CPF"
+								}
+								""".formatted(email)))
+				.andExpect(status().isBadRequest());
+
+		mockMvc.perform(post("/api/v1/auth/register")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "email": "%s",
+								  "password": "password123",
+								  "role": "PACIENTE",
+								  "fullName": "CPF curto",
+								  "cpf": "123456789",
+								  "birthDate": "1990-01-01"
+								}
+								""".formatted(email)))
+				.andExpect(status().isBadRequest());
+
+		String firstCpf = cpf(suffix, "41");
+		registerPatient(email, firstCpf);
+
+		mockMvc.perform(post("/api/v1/auth/register")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "email": "outro.%s@vidaconecta.test",
+								  "password": "password123",
+								  "role": "PACIENTE",
+								  "fullName": "Mesmo CPF",
+								  "cpf": "%s",
+								  "birthDate": "1992-03-03"
+								}
+								""".formatted(suffix, firstCpf)))
+				.andExpect(status().isConflict());
+
+		mockMvc.perform(post("/api/v1/auth/login")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "email": "%s",
+								  "password": "senha-errada"
+								}
+								""".formatted(email)))
+				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void shouldRefreshDoctorInviteAndRejectUsedToken() throws Exception {
+		String suffix = uniqueSuffix();
+		String adminToken = registerAdmin("inv.adm." + suffix + "@vidaconecta.test");
+		String doctorEmail = "inv.med." + suffix + "@vidaconecta.test";
+
+		MvcResult first = mockMvc.perform(post("/api/v1/admin/doctors/invites")
+						.header("Authorization", bearer(adminToken))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "email": "%s",
+								  "fullName": "Dra. Primeiro Nome"
+								}
+								""".formatted(doctorEmail)))
+				.andExpect(status().isCreated())
+				.andReturn();
+		String firstInviteToken = JsonPath.read(body(first), "$.token");
+
+		MvcResult refreshed = mockMvc.perform(post("/api/v1/admin/doctors/invites")
+						.header("Authorization", bearer(adminToken))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "email": "%s",
+								  "fullName": "Dra. Nome Atualizado"
+								}
+								""".formatted(doctorEmail)))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.status").value("PENDING"))
+				.andExpect(jsonPath("$.fullName").value("Dra. Nome Atualizado"))
+				.andReturn();
+		String inviteToken = JsonPath.read(body(refreshed), "$.token");
+
+		mockMvc.perform(get("/api/v1/admin/doctors/invites").header("Authorization", bearer(adminToken)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[*].email", hasItem(doctorEmail)));
+
+		mockMvc.perform(post("/api/v1/auth/register/doctor")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "token": "%s",
+								  "password": "password123",
+								  "crm": "CRMR%s",
+								  "specialty": "Ortopedia"
+								}
+								""".formatted(inviteToken, suffix)))
+				.andExpect(status().isCreated());
+
+		mockMvc.perform(post("/api/v1/auth/register/doctor")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "token": "%s",
+								  "password": "password123",
+								  "crm": "CRMX%s",
+								  "specialty": "Ortopedia"
+								}
+								""".formatted(inviteToken, suffix)))
+				.andExpect(status().isBadRequest());
+
+		mockMvc.perform(get("/api/v1/auth/invites/" + firstInviteToken))
+				.andExpect(status().isNotFound());
+
+		String patientId = currentUserId(registerPatient("inv.pac." + suffix + "@vidaconecta.test", cpf(suffix, "51"))).toString();
+		mockMvc.perform(patch("/api/v1/admin/doctors/" + patientId + "/enabled")
+						.header("Authorization", bearer(adminToken))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{ "enabled": false }
+								"""))
+				.andExpect(status().isBadRequest());
 	}
 }
