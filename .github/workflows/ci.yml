@@ -181,7 +181,7 @@ jobs:
           distribution: ${{ env.JAVA_DISTRIBUTION }}
 
       - name: Baixar o JAR do job de build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v4.1.3
         with:
           name: app-jar
           path: target
@@ -306,7 +306,7 @@ jobs:
       # Varremos o SBOM, e não o JAR: o Trivy não abre as libs aninhadas de um
       # fat JAR do Spring Boot e reportaria "limpo" sem ter analisado nada.
       - name: Baixar o SBOM do job de build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v4.1.3
         with:
           name: sbom
           path: target
