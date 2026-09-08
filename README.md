@@ -114,7 +114,7 @@ docker run --rm -v "$PWD:/src" aquasec/trivy:latest \
 
 1. Em *Settings → Branches*, proteja `main` exigindo o check **`CI concluída`** — ele já cobre todos os outros jobs.
 2. *Security → Code scanning* precisa estar habilitado para o CodeQL publicar alertas (automático em repositório público).
-3. `dependency-review` depende do *Dependency graph* ligado em *Settings → Code security*.
+3. `dependency-review` depende do *Dependency graph* ligado em *Settings → Code security* (quando estiver desligado, o workflow registra aviso e pula essa checagem).
 4. Nenhum secret é necessário: o smoke test usa credenciais descartáveis definidas no próprio workflow.
 
 ## API (v1)

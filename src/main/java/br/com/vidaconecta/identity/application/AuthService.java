@@ -2,6 +2,7 @@ package br.com.vidaconecta.identity.application;
 
 import java.util.Locale;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -9,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 
 import br.com.vidaconecta.identity.api.CurrentUser;
+import br.com.vidaconecta.identity.api.PatientAccountDeleted;
 import br.com.vidaconecta.identity.api.Role;
 import br.com.vidaconecta.identity.domain.AdminProfile;
 import br.com.vidaconecta.identity.domain.DoctorProfile;
@@ -35,7 +37,7 @@ public class AuthService {
 	private final AdminProfileRepository adminProfileRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final JwtService jwtService;
-	private final br.com.vidaconecta.consent.api.ConsentFacade consentFacade;
+	private final ApplicationEventPublisher events;
 
 	public AuthService(
 			UserRepository userRepository,
@@ -44,14 +46,14 @@ public class AuthService {
 			AdminProfileRepository adminProfileRepository,
 			PasswordEncoder passwordEncoder,
 			JwtService jwtService,
-			br.com.vidaconecta.consent.api.ConsentFacade consentFacade) {
+			ApplicationEventPublisher events) {
 		this.userRepository = userRepository;
 		this.patientProfileRepository = patientProfileRepository;
 		this.doctorProfileRepository = doctorProfileRepository;
 		this.adminProfileRepository = adminProfileRepository;
 		this.passwordEncoder = passwordEncoder;
 		this.jwtService = jwtService;
-		this.consentFacade = consentFacade;
+		this.events = events;
 	}
 
 	@Transactional
@@ -68,8 +70,7 @@ public class AuthService {
 		
 		user.anonymize();
 		profile.anonymize();
-		
-		consentFacade.revokeAllFromPatient(user.getId());
+		events.publishEvent(new PatientAccountDeleted(user.getId()));
 	}
 
 	@Transactional
