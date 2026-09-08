@@ -40,7 +40,7 @@ public class MaskUtil {
      *
      * <h3>Exemplos:</h3>
      * <pre>
-     * maskCpf("123.456.789-00") → "***.***.***.00"
+     * maskCpf("123.456.789-00") → "***.***.***-00"
      * maskCpf("") → "***"
      * maskCpf(null) → "***"
      * </pre>

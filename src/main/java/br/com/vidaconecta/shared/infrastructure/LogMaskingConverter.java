@@ -26,9 +26,9 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
  * 
  * <h3>Padrões mascarados automaticamente:</h3>
  * <ul>
- *   <li>CPF: ###.###.###-## → ***.***.***.##</li>
- *   <li>Email: user@domain.com → ***@domain.com</li>
- *   <li>Telefone: (11) 9999-9999 → (**) ****-99</li>
+ *   <li>CPF: ###.###.###-## → ***.***.***-##</li>
+ *   <li>Email: user@domain.com → u***@domain.com</li>
+ *   <li>Telefone: (11) 9999-9999 → (**) ****-**99</li>
  *   <li>UUID: 550e8400-... → 550e8400-****</li>
  * </ul>
  * 
@@ -73,6 +73,11 @@ public class LogMaskingConverter extends ClassicConverter {
      */
     @Override
     public String convert(ILoggingEvent event) {
+
+        if(event == null){
+            return "";
+        }
+
         String message = event.getFormattedMessage();
         if (message == null) {
             return "";

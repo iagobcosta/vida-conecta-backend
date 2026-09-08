@@ -23,7 +23,7 @@ class MaskUtilTest {
 	/**
 	 * Testa mascaramento de CPF no formato padrão brasileiro.
 	 * 
-	 * <p>Valida que CPF "123.456.789-00" é mascarado para "***.***.***.00", 
+	 * <p>Valida que CPF "123.456.789-00" é mascarado para "***.***.***-00", 
 	 * preservando apenas os 2 últimos dígitos.</p>
 	 */
 	@Test
@@ -36,7 +36,7 @@ class MaskUtilTest {
 	 * Testa mascaramento de email.
 	 * 
 	 * <p>Valida que email "paciente@example.com" é mascarado para 
-	 * "***@example.com", removendo completamente a parte local e 
+	 * "p***@example.com", removendo completamente a parte local e 
 	 * preservando domínio e TLD.</p>
 	 */
 	@Test
