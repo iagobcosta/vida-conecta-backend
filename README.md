@@ -1,5 +1,8 @@
 # Vida Conecta — Backend
 
+[![CI](https://github.com/iagobcosta/vida-conecta-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/iagobcosta/vida-conecta-backend/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/iagobcosta/vida-conecta-backend/actions/workflows/codeql.yml/badge.svg)](https://github.com/iagobcosta/vida-conecta-backend/actions/workflows/codeql.yml)
+
 Monólito modular Spring Boot que concentra a API de negócio da plataforma: autenticação, agendamento, consentimento (LGPD), prontuário cifrado, prescrição digital e emissão de token de videochamada. A mídia WebRTC **não** passa por este serviço.
 
 ## Módulos
@@ -64,6 +67,55 @@ docker compose up -d
 ```
 
 Os testes de integração sobem PostgreSQL via Testcontainers. `ModularityTests` valida que um módulo só usa a API pública (`api/`) dos outros.
+
+Para rodar a suíte com o mesmo portão de cobertura da CI:
+
+```bash
+./mvnw verify -Djacoco.line.minimum=0.80
+```
+
+O relatório fica em `target/site/jacoco/index.html`.
+
+## Integração contínua
+
+Toda a CI roda no GitHub Actions. `ci.yml` é a pipeline principal; os outros workflows cuidam de análise de segurança e das regras de pull request.
+
+| Job | O que valida | Reprova quando |
+| --- | --- | --- |
+| **Build e empacotamento** | POM válido, compilação de `main` e `test`, JAR executável e SBOM (CycloneDX) | Erro de compilação ou de empacotamento |
+| **Arquitetura modular** | `ModularityTests` isolado, sem Docker — feedback em ~1 min | Um módulo acessa algo fora do `api/` de outro |
+| **Testes e cobertura** | Suíte completa com Testcontainers + `jacoco:check` | Teste vermelho ou cobertura de linhas abaixo de 80% |
+| **Smoke test** | JAR real contra PostgreSQL real: Flyway na base limpa, boot com config de produção, `/v3/api-docs` e 401 em rota protegida | App não sobe, migration falha, contrato vazio ou rota protegida sem autenticação |
+| **Segurança** | `gitleaks` no histórico do Git e `trivy` sobre o SBOM | Segredo versionado ou CVE **CRITICAL** com correção disponível |
+| **Qualidade e convenções** | `actionlint` nos workflows, padrão de nome das migrations, imutabilidade das migrations já mergeadas, relatório de dependências | Workflow inválido, migration fora do padrão ou alteração de `V*.sql` já mergeado |
+| **Imagem de container** | `spring-boot:build-image` (buildpacks) — só em `main` | A imagem não constrói |
+| **CI concluída** | Agrega o resultado de todos os jobs | Qualquer job acima falhou |
+
+Workflows auxiliares:
+
+- **`codeql.yml`** — SAST do código Java (`security-and-quality`), em push, PR e semanalmente. Os alertas aparecem em *Security → Code scanning*.
+- **`pull-request.yml`** — título do PR em Conventional Commits (o merge é por squash) e `dependency-review` barrando CVE alta ou licença incompatível entrando junto com a mudança.
+- **`dependabot.yml`** — PRs semanais de atualização de dependências Maven e das próprias actions, agrupados por ecossistema.
+
+### Reproduzindo os portões localmente
+
+```bash
+./mvnw verify -Djacoco.line.minimum=0.80          # testes + cobertura
+./mvnw test -Dtest=ModularityTests                # fronteiras entre módulos
+bash .github/scripts/check-migrations.sh          # convenção das migrations
+docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest          # workflows
+docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:latest \
+  git /repo --config /repo/.gitleaks.toml --redact --no-banner            # segredos
+docker run --rm -v "$PWD:/src" aquasec/trivy:latest \
+  sbom --severity HIGH,CRITICAL /src/target/bom.json                      # CVEs (após package)
+```
+
+### Configuração no GitHub
+
+1. Em *Settings → Branches*, proteja `main` exigindo o check **`CI concluída`** — ele já cobre todos os outros jobs.
+2. *Security → Code scanning* precisa estar habilitado para o CodeQL publicar alertas (automático em repositório público).
+3. `dependency-review` depende do *Dependency graph* ligado em *Settings → Code security*.
+4. Nenhum secret é necessário: o smoke test usa credenciais descartáveis definidas no próprio workflow.
 
 ## API (v1)
 

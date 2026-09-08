@@ -1,0 +1,25 @@
+title = "Vida Conecta — regras do gitleaks"
+
+# Mantém todas as regras padrão do gitleaks e só acrescenta as exceções abaixo.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Placeholders de desenvolvimento — nenhum destes valor existe fora da máquina local ou da CI"
+paths = [
+  '''src/test/resources/application-test\.yaml''',
+  '''docker-compose\.yml''',
+]
+regexes = [
+  # Segredo de dev com default no application.yaml.
+  '''local-dev-jwt-secret-key-32bytes-min''',
+  '''test-secret-key-must-be-at-least-32b''',
+  # Chave AES só de exemplo (32 bytes zerados em Base64).
+  '''AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=''',
+  # Segredo descartável usado no smoke test da CI.
+  '''ci-smoke-jwt-secret-key-com-32-bytes-no-minimo''',
+  # Token de bootstrap do seed local, documentado no README.
+  '''b2222222-2222-4222-8222-222222222222''',
+  # Credencial do PostgreSQL do docker-compose local.
+  '''vida_conecta''',
+]

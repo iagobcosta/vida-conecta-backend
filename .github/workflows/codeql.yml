@@ -1,0 +1,57 @@
+name: CodeQL
+
+# Análise estática de segurança do próprio código Java (SAST). Os alertas caem
+# na aba Security > Code scanning do repositório.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Terça-feira, 07:00 UTC — as queries do CodeQL evoluem mesmo sem commits.
+    - cron: "0 7 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyze:
+    name: Análise estática (Java)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      - name: Inicializar o CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: java-kotlin
+          build-mode: manual
+          queries: security-and-quality
+
+      # Build manual (em vez de autobuild) para o CodeQL enxergar exatamente as
+      # mesmas classes que a CI empacota.
+      - name: Compilar
+        run: ./mvnw -B -ntp package -DskipTests
+
+      - name: Analisar
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:java-kotlin"
