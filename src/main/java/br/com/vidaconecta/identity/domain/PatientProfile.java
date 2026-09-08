@@ -81,7 +81,7 @@ public class PatientProfile {
 
 	public void anonymize() {
 		this.fullName = "Usuário Deletado";
-		this.cpf = this.userId.toString().replace("-", "").substring(0, 11);
+		this.cpf = ("DEL" + this.userId.toString().replace("-", "")).substring(0, 11).toUpperCase();
 		this.phone = null;
 	}
 }
