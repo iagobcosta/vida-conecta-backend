@@ -21,6 +21,10 @@ application-local.yml
 *.jks
 *.key
 
+# Jitsi Meet (self-hosted local)
+jitsi/.env
+jitsi-cfg/
+
 # Docker Compose local
 docker-compose.override.yml
 

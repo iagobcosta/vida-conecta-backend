@@ -31,6 +31,21 @@ Identity **é** um módulo: Security é a biblioteca; o bounded context de ident
 docker compose up -d
 ```
 
+## Videochamada (Jitsi self-hosted)
+
+O token `POST /api/v1/video/appointments/{id}/token` continua **mock** (só autoriza a entrada). A mídia roda num Jitsi local via Docker:
+
+```bash
+chmod +x scripts/setup-jitsi.sh
+./scripts/setup-jitsi.sh
+```
+
+- Interface / embed: https://localhost:8443 (aceite o certificado autoassinado na 1ª visita)  
+- Sem login de moderador (diferente do `meet.jit.si`)  
+- No frontend: `VITE_JITSI_DOMAIN=localhost:8443` (já no `.env.example`) e reinicie o Vite  
+
+Para parar: `cd jitsi && docker compose down`
+
 ## Executar a API
 
 ```bash

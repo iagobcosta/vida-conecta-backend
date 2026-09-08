@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: vida_conecta
       POSTGRES_PASSWORD: vida_conecta
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - vida_conecta_pg:/var/lib/postgresql/data
     healthcheck:

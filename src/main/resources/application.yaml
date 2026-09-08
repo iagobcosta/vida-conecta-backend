@@ -2,7 +2,7 @@ spring:
   application:
     name: vida-conecta-backend
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/vida_conecta}
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5433/vida_conecta}
     username: ${DATABASE_USERNAME:vida_conecta}
     password: ${DATABASE_PASSWORD:vida_conecta}
   jpa:
@@ -35,7 +35,8 @@ vida-conecta:
   ehr:
     encryption-key: ${EHR_ENCRYPTION_KEY:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS=https://vida-conecta-frontend.vercel.app,https://*.vercel.app,http://localhost:5173}
+    # localhost:* cobre 5173/5174/... quando o Vite sobe em outra porta
+    allowed-origins: ${CORS_ALLOWED_ORIGINS=https://vida-conecta-frontend.vercel.app,https://*.vercel.app,http://localhost:*}
   video:
     join-window-minutes-before: ${VIDEO_JOIN_WINDOW_MINUTES_BEFORE:10}
   mail:
