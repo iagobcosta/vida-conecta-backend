@@ -6,10 +6,12 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+@Profile("prod")
 @Component
 public class EhrDataRetentionJob {
     private static final Logger log = LoggerFactory.getLogger(EhrDataRetentionJob.class);
@@ -26,9 +28,9 @@ public class EhrDataRetentionJob {
         this.clinicalNoteRepository = clinicalNoteRepository;
     }
 
-    @Scheduled(cron = "0 0 3 * * *")
+    @Scheduled(cron = "0 0 3 * * *", zone = "UTC")
     @Transactional
-    public void cleanupOldAuditLogs() {
+    public void cleanupExpiredEhrData() {
         log.info("Iniciando rotina LGPD/CFM de retenção de dados...");
 
         Instant auditCutoff = Instant.now().minus(AUDIT_RETENTION_YEARS * 365L, ChronoUnit.DAYS);
