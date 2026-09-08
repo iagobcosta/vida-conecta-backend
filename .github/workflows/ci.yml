@@ -1,0 +1,470 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Segunda-feira, 06:00 UTC — pega CVEs novas mesmo sem commits novos.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+# Princípio do menor privilégio: cada job eleva o que precisar.
+permissions:
+  contents: read
+
+# Um PR que recebe push novo cancela a execução anterior; main nunca é cancelada.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  JAVA_VERSION: "21"
+  JAVA_DISTRIBUTION: "temurin"
+  # Piso de cobertura de linhas exigido de jacoco:check. A suíte atual entrega
+  # ~86%; o piso fica abaixo disso de propósito, para barrar regressão sem
+  # travar refatoração legítima.
+  COBERTURA_MINIMA: "0.80"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Build — compila e empacota. É o job mais rápido a falhar em erro de código.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build e empacotamento
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configurar Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v6
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          cache: maven
+
+      - name: Validar o POM
+        run: ./mvnw -B -ntp validate
+
+      - name: Compilar main e test
+        run: ./mvnw -B -ntp test-compile
+
+      # O package também gera o SBOM (CycloneDX) que o job de segurança consome.
+      - name: Empacotar o JAR executável e gerar o SBOM
+        run: ./mvnw -B -ntp package -DskipTests
+
+      - name: Publicar o JAR como artefato
+        uses: actions/upload-artifact@v7
+        with:
+          name: app-jar
+          path: target/*.jar
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publicar o SBOM
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom
+          path: target/bom.json
+          if-no-files-found: error
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # 2. Arquitetura — fronteiras entre módulos (Spring Modulith). Não usa Docker,
+  #    então dá o feedback arquitetural em ~1 min, antes da suíte completa.
+  # ---------------------------------------------------------------------------
+  architecture:
+    name: Arquitetura modular
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configurar Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v6
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          cache: maven
+
+      - name: Verificar que cada módulo só usa a API pública dos outros
+        run: >-
+          ./mvnw -B -ntp test
+          -Dtest=ModularityTests
+          -Dsurefire.failIfNoSpecifiedTests=true
+          -Djacoco.skip=true
+
+  # ---------------------------------------------------------------------------
+  # 3. Testes — suíte completa (integração via Testcontainers) + cobertura.
+  # ---------------------------------------------------------------------------
+  test:
+    name: Testes e cobertura
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # application.yaml liga o SES por padrão; sem isso a suíte tenta chamar a
+      # AWS de verdade a cada convite e depende de timeout de rede para passar.
+      SES_ENABLED: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configurar Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v6
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          cache: maven
+
+      # Baixar antes evita que o timeout de startup do Testcontainers conte o pull.
+      - name: Pré-baixar a imagem do PostgreSQL
+        run: docker pull postgres:16-alpine
+
+      - name: Executar a suíte e o gate de cobertura
+        run: ./mvnw -B -ntp verify -Djacoco.line.minimum="$COBERTURA_MINIMA"
+
+      - name: Resumo dos testes
+        if: always()
+        run: python3 .github/scripts/test_summary.py
+
+      - name: Resumo da cobertura
+        if: always()
+        run: python3 .github/scripts/coverage_summary.py
+
+      - name: Publicar relatórios
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: relatorios-de-teste
+          path: |
+            target/surefire-reports/
+            target/site/jacoco/
+          if-no-files-found: warn
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # 4. Smoke test — sobe o JAR contra um PostgreSQL de verdade. Cobre o que teste
+  #    de integração não cobre: Flyway na base limpa, boot com config de produção,
+  #    contrato OpenAPI e endpoint protegido respondendo 401.
+  # ---------------------------------------------------------------------------
+  smoke:
+    name: Smoke test da aplicação
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: vida_conecta
+          POSTGRES_USER: vida_conecta
+          POSTGRES_PASSWORD: vida_conecta
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vida_conecta -d vida_conecta"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configurar Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v6
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: Baixar o JAR do job de build
+        uses: actions/download-artifact@v8
+        with:
+          name: app-jar
+          path: target
+
+      - name: Subir a aplicação
+        env:
+          DATABASE_URL: jdbc:postgresql://localhost:5432/vida_conecta
+          DATABASE_USERNAME: vida_conecta
+          DATABASE_PASSWORD: vida_conecta
+          # Segredos descartáveis, exclusivos da CI.
+          JWT_SECRET: ci-smoke-jwt-secret-key-com-32-bytes-no-minimo
+          EHR_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          SES_ENABLED: "false"
+          MAIL_FROM: no-reply@ci.local
+          FRONTEND_BASE_URL: http://localhost:5173
+          CORS_ALLOWED_ORIGINS: http://localhost:5173
+        run: |
+          set -euo pipefail
+          jar=$(find target -maxdepth 1 -name '*.jar' | head -n 1)
+          echo "Executando $jar"
+          nohup java -jar "$jar" > app.log 2>&1 &
+          echo $! > app.pid
+
+      - name: Aguardar o health check
+        run: |
+          set -uo pipefail
+          for _ in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/actuator/health 2>/dev/null | grep -q '"status":"UP"'; then
+              echo "Aplicação no ar."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::A aplicação não ficou UP em 120s."
+          exit 1
+
+      # Roda o psql dentro do próprio container de serviço: não depende de o
+      # runner ter cliente PostgreSQL instalado.
+      - name: Conferir as migrations aplicadas pelo Flyway
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          consultar() {
+            docker exec -e PGPASSWORD=vida_conecta "$PG_CONTAINER" \
+              psql -h localhost -U vida_conecta -d vida_conecta -tAc "$1"
+          }
+          aplicadas=$(consultar "select count(*) from flyway_schema_history where success and type = 'SQL'")
+          falhas=$(consultar "select count(*) from flyway_schema_history where not success")
+          esperadas=$(find src/main/resources/db/migration -maxdepth 1 -name 'V*.sql' | wc -l | tr -d ' ')
+          echo "Migrations aplicadas: $aplicadas de $esperadas (com falha: $falhas)"
+          docker exec -e PGPASSWORD=vida_conecta "$PG_CONTAINER" \
+            psql -h localhost -U vida_conecta -d vida_conecta \
+            -c "select version, description, success from flyway_schema_history order by installed_rank"
+          test "$falhas" = "0" || { echo "::error::Há migration com success=false."; exit 1; }
+          test "$aplicadas" = "$esperadas" || {
+            echo "::error::Esperava $esperadas migrations aplicadas, encontrei $aplicadas."; exit 1; }
+
+      - name: Conferir o contrato OpenAPI
+        run: |
+          set -euo pipefail
+          curl -fsS http://localhost:8080/v3/api-docs -o openapi.json
+          python3 - <<'PY'
+          import json, sys
+          spec = json.load(open("openapi.json"))
+          rotas = spec.get("paths") or {}
+          if not rotas:
+              sys.exit("::error::OpenAPI gerado sem nenhuma rota.")
+          print(f"{len(rotas)} rotas documentadas.")
+          PY
+
+      - name: Conferir que endpoint protegido exige autenticação
+        run: |
+          set -euo pipefail
+          codigo=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/v1/appointments)
+          test "$codigo" = "401" || {
+            echo "::error::Esperava 401 sem token em /api/v1/appointments, veio $codigo."; exit 1; }
+          echo "Endpoint protegido respondeu 401 como esperado."
+
+      - name: Publicar o contrato OpenAPI
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: openapi
+          path: openapi.json
+          retention-days: 7
+
+      - name: Publicar o log da aplicação
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-app-log
+          path: app.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Encerrar a aplicação
+        if: always()
+        run: |
+          if [ -f app.pid ]; then kill "$(cat app.pid)" 2>/dev/null || true; fi
+
+  # ---------------------------------------------------------------------------
+  # 5. Segurança — segredos versionados e CVEs nas dependências empacotadas.
+  # ---------------------------------------------------------------------------
+  security:
+    name: Segurança
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 15
+    steps:
+      - name: Checkout com histórico completo
+        uses: actions/checkout@v7
+        with:
+          # gitleaks varre o histórico, não só a árvore de trabalho.
+          fetch-depth: 0
+
+      - name: Procurar segredos versionados (gitleaks)
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/repo" ghcr.io/gitleaks/gitleaks:latest \
+            git /repo --config /repo/.gitleaks.toml --redact --no-banner --verbose --exit-code 1
+
+      # Varremos o SBOM, e não o JAR: o Trivy não abre as libs aninhadas de um
+      # fat JAR do Spring Boot e reportaria "limpo" sem ter analisado nada.
+      - name: Baixar o SBOM do job de build
+        uses: actions/download-artifact@v8
+        with:
+          name: sbom
+          path: target
+
+      - name: Inventariar CVEs das dependências (relatório)
+        run: |
+          set -euo pipefail
+          docker run --rm -v "${{ github.workspace }}:/src" aquasec/trivy:latest \
+            sbom --scanners vuln --severity HIGH,CRITICAL --no-progress \
+            --format table /src/target/bom.json | tee trivy.txt
+          {
+            echo "### Vulnerabilidades HIGH/CRITICAL nas dependências"
+            echo
+            echo '```'
+            cat trivy.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Barrar CVEs CRITICAL com correção disponível
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/src" aquasec/trivy:latest \
+            sbom --scanners vuln --severity CRITICAL --ignore-unfixed --no-progress \
+            --exit-code 1 /src/target/bom.json
+
+  # ---------------------------------------------------------------------------
+  # 6. Qualidade — lint dos próprios workflows, higiene de dependências e as
+  #    regras de migration que o Flyway só descobriria em produção.
+  # ---------------------------------------------------------------------------
+  quality:
+    name: Qualidade e convenções
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout com histórico completo
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Lint dos workflows do GitHub Actions
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/repo" -w /repo \
+            rhysd/actionlint:latest -color
+
+      - name: Conferir a convenção de nome das migrations
+        run: bash .github/scripts/check-migrations.sh
+
+      - name: Garantir que migrations já mergeadas não foram alteradas
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          alteradas=$(git diff --diff-filter=MDR --name-only "$BASE_SHA" HEAD -- \
+            src/main/resources/db/migration || true)
+          if [ -n "$alteradas" ]; then
+            echo "::error::Migration já mergeada foi alterada ou removida — o checksum do Flyway quebra em produção:"
+            echo "$alteradas"
+            exit 1
+          fi
+          echo "Nenhuma migration existente foi alterada."
+
+      - name: Configurar Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v6
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          cache: maven
+
+      - name: Analisar dependências declaradas e usadas (relatório)
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp dependency:analyze -DignoreNonCompile=true > deps.txt 2>&1 || true
+          {
+            echo "### Análise de dependências"
+            echo
+            echo '```'
+            grep -E "WARNING|Unused|Used undeclared" deps.txt | head -n 40 || echo "Sem apontamentos."
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Listar atualizações disponíveis (relatório)
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp versions:display-dependency-updates > updates.txt 2>&1 || true
+          {
+            echo "### Atualizações de dependências disponíveis"
+            echo
+            echo '```'
+            grep -E "^\[INFO\]\s+\S+ \.* " updates.txt | head -n 40 || echo "Tudo atualizado."
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # 7. Imagem OCI — só em main. Prova que o serviço é empacotável para deploy.
+  # ---------------------------------------------------------------------------
+  image:
+    name: Imagem de container
+    if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    needs: [test, smoke]
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configurar Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v6
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          cache: maven
+
+      - name: Construir a imagem com buildpacks
+        run: >-
+          ./mvnw -B -ntp package spring-boot:build-image -DskipTests
+          -Dspring-boot.build-image.imageName=vida-conecta-backend:${{ github.sha }}
+
+      - name: Inspecionar a imagem
+        run: |
+          docker image inspect "vida-conecta-backend:${{ github.sha }}" \
+            --format 'Imagem: {{.Id}} | Tamanho: {{.Size}} bytes | Usuário: {{.Config.User}}'
+
+      - name: Inventariar CVEs da imagem (relatório)
+        run: |
+          set -euo pipefail
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest \
+            image --severity HIGH,CRITICAL --no-progress --format table \
+            "vida-conecta-backend:${{ github.sha }}" | tee trivy-image.txt
+          {
+            echo "### Vulnerabilidades HIGH/CRITICAL na imagem"
+            echo
+            echo '```'
+            cat trivy-image.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # 8. Gate — job único para exigir na branch protection.
+  # ---------------------------------------------------------------------------
+  ci:
+    name: CI concluída
+    if: always()
+    runs-on: ubuntu-latest
+    needs: [build, architecture, test, smoke, security, quality, image]
+    steps:
+      - name: Conferir o resultado de todos os jobs
+        env:
+          RESULTADOS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, sys
+          resultados = json.loads(os.environ["RESULTADOS"])
+          falhas = {n: j["result"] for n, j in resultados.items()
+                    if j["result"] not in ("success", "skipped")}
+          for nome, jobs in sorted(resultados.items()):
+              print(f"{nome:<14} {jobs['result']}")
+          if falhas:
+              sys.exit("::error::Jobs com falha: " + ", ".join(sorted(falhas)))
+          print("\nTodos os jobs passaram.")
+          PY

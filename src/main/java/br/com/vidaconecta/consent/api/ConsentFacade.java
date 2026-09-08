@@ -5,4 +5,6 @@ import java.util.UUID;
 public interface ConsentFacade {
 
 	boolean hasValidConsent(UUID patientId, UUID doctorId, UUID appointmentId);
+
+	void revokeAllFromPatient(UUID patientId);
 }

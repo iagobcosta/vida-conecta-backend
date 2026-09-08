@@ -1,0 +1,67 @@
+name: Pull request
+
+# Validações que só fazem sentido no contexto de um PR: título, tamanho da
+# mudança e dependências novas entrando no projeto.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  titulo:
+    name: Título em Conventional Commits
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      # O merge é por squash: o título do PR vira a mensagem do commit em main.
+      - name: Validar o título
+        uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            revert
+          requireScope: false
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: |
+            O assunto "{subject}" deve começar em minúscula, no imperativo.
+            Ex.: "feat: adiciona cancelamento de consulta pelo médico".
+
+  dependencias:
+    name: Revisão de dependências novas
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Compara o grafo de dependências do PR com o de main e barra CVE conhecida
+      # ou licença incompatível chegando junto com a mudança.
+      - name: Revisar dependências
+        uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+          deny-licenses: AGPL-3.0, GPL-3.0

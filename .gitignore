@@ -28,6 +28,15 @@ jitsi-cfg/
 # Docker Compose local
 docker-compose.override.yml
 
+# Saídas de reprodução local dos portões de CI (ver README > Integração contínua)
+/trivy.txt
+/trivy-image.txt
+/deps.txt
+/updates.txt
+/openapi.json
+/app.log
+/app.pid
+
 # OS
 .DS_Store
 Thumbs.db

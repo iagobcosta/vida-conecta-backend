@@ -62,4 +62,13 @@ public class DoctorProfile {
 	public String getSpecialty() {
 		return specialty;
 	}
+
+	public void update(String fullName, String specialty) {
+		if (fullName != null && !fullName.isBlank()) {
+			this.fullName = fullName.trim();
+		}
+		if (specialty != null && !specialty.isBlank()) {
+			this.specialty = specialty.trim();
+		}
+	}
 }
