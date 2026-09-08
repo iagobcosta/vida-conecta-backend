@@ -110,4 +110,11 @@ public class User {
 	public void attachAdminProfile(AdminProfile profile) {
 		this.adminProfile = profile;
 	}
+
+	public void anonymize() {
+		this.email = this.id.toString() + "@deleted.local";
+		this.passwordHash = "DELETED";
+		this.enabled = false;
+		this.updatedAt = Instant.now();
+	}
 }

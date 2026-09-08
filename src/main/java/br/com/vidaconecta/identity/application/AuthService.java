@@ -1,5 +1,13 @@
 package br.com.vidaconecta.identity.application;
 
+import java.util.Locale;
+
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+
 import br.com.vidaconecta.identity.api.CurrentUser;
 import br.com.vidaconecta.identity.api.Role;
 import br.com.vidaconecta.identity.domain.AdminProfile;
@@ -17,11 +25,6 @@ import br.com.vidaconecta.identity.web.TokenResponse;
 import br.com.vidaconecta.shared.api.BusinessException;
 import br.com.vidaconecta.shared.api.ConflictException;
 import br.com.vidaconecta.shared.api.NotFoundException;
-import java.util.Locale;
-import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AuthService {
@@ -32,6 +35,7 @@ public class AuthService {
 	private final AdminProfileRepository adminProfileRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final JwtService jwtService;
+	private final br.com.vidaconecta.consent.api.ConsentFacade consentFacade;
 
 	public AuthService(
 			UserRepository userRepository,
@@ -39,19 +43,40 @@ public class AuthService {
 			DoctorProfileRepository doctorProfileRepository,
 			AdminProfileRepository adminProfileRepository,
 			PasswordEncoder passwordEncoder,
-			JwtService jwtService) {
+			JwtService jwtService,
+			br.com.vidaconecta.consent.api.ConsentFacade consentFacade) {
 		this.userRepository = userRepository;
 		this.patientProfileRepository = patientProfileRepository;
 		this.doctorProfileRepository = doctorProfileRepository;
 		this.adminProfileRepository = adminProfileRepository;
 		this.passwordEncoder = passwordEncoder;
 		this.jwtService = jwtService;
+		this.consentFacade = consentFacade;
+	}
+
+	@Transactional
+	public void deleteAccount(CurrentUser currentUser) {
+		User user = userRepository.findById(currentUser.id())
+				.orElseThrow(() -> new NotFoundException("Usuário não encontrado"));
+		
+		if (user.getRole() != Role.PACIENTE) {
+			throw new BusinessException("Apenas pacientes podem excluir a própria conta por este canal.");
+		}
+		
+		PatientProfile profile = patientProfileRepository.findByUserId(user.getId())
+				.orElseThrow(() -> new NotFoundException("Perfil não encontrado"));
+		
+		user.anonymize();
+		profile.anonymize();
+		
+		consentFacade.revokeAllFromPatient(user.getId());
 	}
 
 	@Transactional
 	public TokenResponse register(RegisterRequest request) {
 		if (request.role() != Role.PACIENTE) {
-			throw new BusinessException("O cadastro público é exclusivo para pacientes. Médicos entram por convite do administrador");
+			throw new BusinessException(
+					"O cadastro público é exclusivo para pacientes. Médicos entram por convite do administrador");
 		}
 		String email = request.email().trim().toLowerCase(Locale.ROOT);
 		if (userRepository.existsByEmailIgnoreCase(email)) {
@@ -93,6 +118,31 @@ public class AuthService {
 		return MeResponse.admin(user, profile);
 	}
 
+	@Transactional
+	public MeResponse updateProfile(CurrentUser currentUser, br.com.vidaconecta.identity.web.UpdateProfileRequest request) {
+		User user = userRepository.findById(currentUser.id())
+				.orElseThrow(() -> new NotFoundException("Usuário não encontrado"));
+
+		if (user.getRole() == Role.PACIENTE) {
+			PatientProfile profile = patientProfileRepository.findByUserId(user.getId())
+					.orElseThrow(() -> new NotFoundException("Perfil de paciente não encontrado"));
+			profile.update(request.fullName(), request.phone(), request.birthDate());
+			return MeResponse.patient(user, profile);
+		}
+		if (user.getRole() == Role.MEDICO) {
+			DoctorProfile profile = doctorProfileRepository.findByUserId(user.getId())
+					.orElseThrow(() -> new NotFoundException("Perfil de médico não encontrado"));
+			profile.update(request.fullName(), request.specialty());
+			return MeResponse.doctor(user, profile);
+		}
+		
+		AdminProfile profile = adminProfileRepository.findByUserId(user.getId()).orElse(null);
+		if (profile != null) {
+			profile.update(request.fullName());
+		}
+		return MeResponse.admin(user, profile);
+	}
+
 	private void registerPatient(User user, RegisterRequest request) {
 		if (isBlank(request.cpf()) || request.birthDate() == null) {
 			throw new BusinessException("Paciente precisa informar CPF e data de nascimento");
@@ -104,7 +154,8 @@ public class AuthService {
 		if (patientProfileRepository.existsByCpf(cpf)) {
 			throw new ConflictException("CPF já cadastrado");
 		}
-		PatientProfile profile = PatientProfile.of(user, request.fullName().trim(), cpf, request.birthDate(), request.phone());
+		PatientProfile profile = PatientProfile.of(user, request.fullName().trim(), cpf, request.birthDate(),
+				request.phone());
 		patientProfileRepository.save(profile);
 		user.attachPatientProfile(profile);
 	}
@@ -112,4 +163,5 @@ public class AuthService {
 	private boolean isBlank(String value) {
 		return value == null || value.isBlank();
 	}
+
 }

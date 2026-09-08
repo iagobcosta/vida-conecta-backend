@@ -15,6 +15,7 @@ Pacotes em `br.com.vidaconecta`, fronteiras verificadas com [Spring Modulith](ht
 | Consent | `consent` | Consentimento versionado (por médico ou por consulta) |
 | EHR | `ehr` | Prontuário cifrado (AES-GCM) e auditoria de acesso |
 | Prescription | `prescription` | Receita digital ligada à consulta |
+| Portability | `portability` | Exportação de dados (LGPD) |
 | Video | `video` | Token de sala (provider mock; LiveKit depois) |
 
 Identity **é** um módulo: Security é a biblioteca; o bounded context de identidade é quem possui usuários, papéis e JWT. Autorização clínica (quem lê prontuário) fica em Consent + EHR.
@@ -66,7 +67,7 @@ Os testes de integração sobem PostgreSQL via Testcontainers. `ModularityTests`
 
 ## API (v1)
 
-- `POST /api/v1/auth/register` (paciente) · `POST /api/v1/auth/register/admin` · `POST /api/v1/auth/register/doctor` · `GET /api/v1/auth/invites/{token}` · `POST /api/v1/auth/login` · `GET /api/v1/auth/me`
+- `POST /api/v1/auth/register` (paciente) · `POST /api/v1/auth/register/admin` · `POST /api/v1/auth/register/doctor` · `GET /api/v1/auth/invites/{token}` · `POST /api/v1/auth/login` · `GET /api/v1/auth/me` · `DELETE /api/v1/auth/me` · `PATCH /api/v1/auth/me` · `GET /api/v1/auth/me/export`
 - `GET /api/v1/admin/bootstrap-token` · `GET|POST /api/v1/admin/doctors/invites` · `GET /api/v1/admin/doctors` · `PATCH /api/v1/admin/doctors/{id}/enabled` · `GET /api/v1/admin/insights`
 - `GET /api/v1/doctors` · `GET /api/v1/doctors/{id}/availability` · `GET /api/v1/doctors/{id}/slots`
 - `GET|POST /api/v1/me/availability` · `DELETE /api/v1/me/availability/{id}`
