@@ -37,8 +37,8 @@ public class PortabilityService {
 
 		return new DataExportResponse(
 				profile,
-				null, // appointments
-				null, // consents
+				java.util.List.of(), // appointments
+				java.util.List.of(), // consents
 				notes,
 				prescriptions,
 				audit
