@@ -25,7 +25,7 @@ jobs:
     steps:
       # O merge é por squash: o título do PR vira a mensagem do commit em main.
       - name: Validar o título
-        uses: amannn/action-semantic-pull-request@v5
+        uses: amannn/action-semantic-pull-request@v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -55,12 +55,12 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Compara o grafo de dependências do PR com o de main e barra CVE conhecida
       # ou licença incompatível chegando junto com a mudança.
       - name: Revisar dependências
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
           comment-summary-in-pr: on-failure
