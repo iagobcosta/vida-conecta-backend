@@ -1,5 +1,0 @@
-Types: deb
-URIs: https://download.jitsi.org
-Suites: stable/
-Components:
-Signed-By: /usr/share/keyrings/jitsi.gpg

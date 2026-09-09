@@ -1,3 +1,0 @@
-#!/command/with-contenv bash
-
-exec nginx -c /run/web/config/nginx/nginx.conf

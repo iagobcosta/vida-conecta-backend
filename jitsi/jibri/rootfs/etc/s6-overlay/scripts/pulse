@@ -1,4 +1,0 @@
-#!/command/with-contenv bash
-
-HOME=/home/s6
-exec /bin/bash -c "exec /usr/bin/pulseaudio"
