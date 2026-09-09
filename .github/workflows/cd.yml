@@ -1,0 +1,131 @@
+name: CD
+
+# Publica a imagem no Docker Hub. Só roda depois que a CI passa em main, em
+# tags de release, ou sob demanda — nunca em PR de terceiros.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build multi-arquitetura e publicação no Docker Hub
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    steps:
+      # Para o gatilho workflow_run, github.sha aponta para o commit do próprio
+      # cd.yml, não para o commit que a CI verificou — por isso resolvemos e
+      # fazemos checkout explícito do head_sha da execução da CI que passou.
+      - name: Resolver o commit a publicar
+        id: commit
+        run: |
+          sha="${{ github.event.workflow_run.head_sha || github.sha }}"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${sha:0:7}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout do commit verificado pela CI
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.commit.outputs.sha }}
+
+      - name: Configurar QEMU (emulação para build ARM em runner x86)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login no Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Calcular tags e metadados da imagem
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ vars.DOCKERHUB_USERNAME }}/vida-conecta-backend
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ steps.commit.outputs.short_sha }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      # Builda só linux/amd64, carregado no daemon local, para escanear ANTES
+      # de publicar. É esse alvo (e não o multi-arch, que não pode ser
+      # carregado localmente) que decide se a publicação acontece.
+      - name: Build local (amd64) para escaneamento prévio
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: vida-conecta-backend:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Inventariar CVEs da imagem (relatório)
+        run: |
+          set -euo pipefail
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest \
+            image --severity HIGH,CRITICAL --no-progress --format table \
+            vida-conecta-backend:scan | tee trivy-image.txt
+          {
+            echo "### Vulnerabilidades HIGH/CRITICAL na imagem"
+            echo
+            echo '```'
+            cat trivy-image.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Barrar CVEs CRITICAL com correção disponível
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest \
+            image --severity CRITICAL --ignore-unfixed --no-progress --exit-code 1 \
+            vida-conecta-backend:scan
+
+      - name: Build multi-arquitetura e publicação
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: true
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Resumo da publicação
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo "### Imagem publicada"
+            echo
+            echo "Plataformas: \`linux/amd64\`, \`linux/arm64\`"
+            echo
+            echo "Tags:"
+            echo '```'
+            echo "$TAGS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
