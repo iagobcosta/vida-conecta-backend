@@ -1,0 +1,14 @@
+target/
+.git/
+.github/
+.idea/
+.vscode/
+*.md
+docker-compose*.yml
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.jks
+*.key

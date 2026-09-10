@@ -115,7 +115,50 @@ docker run --rm -v "$PWD:/src" aquasec/trivy:latest \
 1. Em *Settings → Branches*, proteja `main` exigindo o check **`CI concluída`** — ele já cobre todos os outros jobs.
 2. *Security → Code scanning* precisa estar habilitado para o CodeQL publicar alertas (automático em repositório público).
 3. `dependency-review` depende do *Dependency graph* ligado em *Settings → Code security* (quando estiver desligado, o workflow registra aviso e pula essa checagem).
-4. Nenhum secret é necessário: o smoke test usa credenciais descartáveis definidas no próprio workflow.
+4. Nenhum secret é necessário para a CI: o smoke test usa credenciais descartáveis definidas no próprio workflow. A CD (publicação da imagem) precisa das credenciais descritas abaixo.
+
+## Entrega contínua (CD) — imagem de container
+
+`cd.yml` builda a imagem com Docker Buildx e publica no Docker Hub. Ele **não** roda em pull request — só depois que `ci.yml` passa em `main`, em uma tag de versão, ou sob demanda:
+
+| Gatilho | Quando dispara |
+| --- | --- |
+| `workflow_run` (após `CI`) | Toda vez que a CI termina com sucesso em `main` — publica `latest` e a tag `<sha curto>` |
+| `push` de tag `v*.*.*` | Publica também as tags semânticas (`v1.2.3`, `1.2`) — crie a tag a partir de um commit que já esteja em `main` (e portanto já passou na CI) |
+| `workflow_dispatch` | Disparo manual pela aba Actions |
+
+A imagem é multi-arquitetura (`linux/amd64` + `linux/arm64`, via Buildx/QEMU), então a mesma tag roda tanto em EC2 Intel/AMD quanto Graviton. O `Dockerfile` é multi-stage com o JAR extraído em camadas (`-Djarmode=tools extract --layers`) e roda como usuário não-root (`vidaconecta`). Antes de publicar, o job builda a variante `amd64` localmente e escaneia com Trivy — CVE **CRITICAL** com correção disponível barra a publicação, do mesmo jeito que o job de segurança da CI barra o SBOM.
+
+### Configurar o Docker Hub
+
+1. Crie um [Access Token](https://hub.docker.com/settings/security) no Docker Hub (não use a senha da conta).
+2. Em *Settings → Secrets and variables → Actions* do repositório:
+   - **Variables** → `DOCKERHUB_USERNAME` = seu usuário do Docker Hub (não é segredo, só identifica o repositório da imagem).
+   - **Secrets** → `DOCKERHUB_TOKEN` = o Access Token gerado.
+3. Repositório de destino: `<DOCKERHUB_USERNAME>/vida-conecta-backend` — o Docker Hub cria o repositório automaticamente no primeiro push (fica público por padrão; torne privado nas configurações do repositório se necessário).
+
+### Rodando no EC2
+
+Na instância (Amazon Linux 2023 com Docker instalado):
+
+```bash
+docker pull <usuario>/vida-conecta-backend:latest
+
+docker run -d --name vida-conecta-backend --restart unless-stopped -p 8080:8080 \
+  -e DATABASE_URL=jdbc:postgresql://<host-do-postgres>:5432/vida_conecta \
+  -e DATABASE_USERNAME=vida_conecta \
+  -e DATABASE_PASSWORD=<senha> \
+  -e JWT_SECRET=<segredo-de-producao> \
+  -e EHR_ENCRYPTION_KEY=<chave-base64-32-bytes> \
+  -e SES_ENABLED=true \
+  -e MAIL_FROM=<remetente-verificado> \
+  -e AWS_REGION=us-east-1 \
+  -e CORS_ALLOWED_ORIGINS=https://seu-frontend.exemplo \
+  -e FRONTEND_BASE_URL=https://seu-frontend.exemplo \
+  <usuario>/vida-conecta-backend:latest
+```
+
+Para atualizar depois de uma nova publicação: `docker pull ... && docker stop vida-conecta-backend && docker rm vida-conecta-backend` e repita o `docker run`. Automatizar esse pull/restart (via SSM ou SSH a partir do próprio pipeline) fica para uma etapa seguinte — hoje o `cd.yml` só publica a imagem.
 
 ## API (v1)
 
