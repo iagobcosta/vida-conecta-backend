@@ -57,6 +57,23 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Lê o <version> de primeiro nível do pom.xml (não confundir com a versão
+      # de alguma dependência) e descarta o sufixo (ex.: "-SNAPSHOT"), deixando
+      # só a parte numérica como tag — ex.: "1.1.1-SNAPSHOT" vira "1.1.1".
+      - name: Extrair a versão do projeto (pom.xml)
+        id: version
+        run: |
+          set -euo pipefail
+          numerica=$(python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          ns = {"m": "http://maven.apache.org/POM/4.0.0"}
+          versao = ET.parse("pom.xml").getroot().find("m:version", ns).text
+          print(versao.split("-")[0])
+          PY
+          )
+          echo "Versão do pom.xml -> tag: $numerica"
+          echo "version=$numerica" >> "$GITHUB_OUTPUT"
+
       - name: Calcular tags e metadados da imagem
         id: meta
         uses: docker/metadata-action@v5
@@ -64,7 +81,7 @@ jobs:
           images: ${{ vars.DOCKERHUB_USERNAME }}/vida-conecta-backend
           tags: |
             type=raw,value=latest
-            type=raw,value=${{ steps.commit.outputs.short_sha }}
+            type=raw,value=${{ steps.version.outputs.version }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
@@ -129,3 +146,83 @@ jobs:
             echo "$TAGS"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # Deploy — manda o EC2 puxar a tag `latest` recém-publicada e recriar o
+  # container da API. Roda via AWS Systems Manager (SSM Run Command): sem SSH
+  # exposto, sem chave privada em Secret. O GitHub Actions assume uma IAM role
+  # via OIDC (nenhuma credencial de longa duração fica gravada no repositório).
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy no EC2 via SSM
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configurar credenciais AWS (OIDC, sem chave de longa duração)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # O script fica versionado no repo (deploy/ec2-deploy.sh) em vez de
+      # mantido manualmente na instância — assim o próprio EC2 sempre roda a
+      # versão do script que está em main, sem drift entre repo e servidor.
+      # O comando embutido não carrega segredo nenhum: o script lê as env vars
+      # do container atual na própria instância antes de recriá-lo.
+      - name: Enviar o comando de deploy via SSM
+        id: enviar
+        run: |
+          set -euo pipefail
+          COMMANDS_JSON=$(jq -n \
+            --arg image "${{ vars.DOCKERHUB_USERNAME }}/vida-conecta-backend:latest" \
+            --arg container "vida-conecta-api" \
+            --rawfile script deploy/ec2-deploy.sh \
+            '["export DEPLOY_IMAGE=" + ($image|@sh), "export DEPLOY_CONTAINER=" + ($container|@sh)] + ($script | split("\n"))')
+
+          COMMAND_ID=$(aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --instance-ids "${{ vars.EC2_INSTANCE_ID }}" \
+            --comment "Deploy vida-conecta-backend via GitHub Actions (run ${{ github.run_id }})" \
+            --parameters "{\"commands\":$COMMANDS_JSON}" \
+            --query "Command.CommandId" --output text)
+
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
+          echo "Command ID: $COMMAND_ID"
+
+      - name: Aguardar o resultado do deploy
+        env:
+          COMMAND_ID: ${{ steps.enviar.outputs.command_id }}
+          INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 30); do
+            status=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+              --query "Status" --output text 2>/dev/null || echo "Pending")
+            echo "Status: $status"
+            case "$status" in
+            Success)
+              aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+                --query "StandardOutputContent" --output text
+              exit 0
+              ;;
+            Failed | Cancelled | TimedOut)
+              echo "::error::Deploy no EC2 falhou (status: $status)."
+              aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+                --query "StandardOutputContent" --output text
+              aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+                --query "StandardErrorContent" --output text >&2
+              exit 1
+              ;;
+            esac
+            sleep 5
+          done
+          echo "::error::Timeout aguardando o resultado do comando SSM."
+          exit 1
