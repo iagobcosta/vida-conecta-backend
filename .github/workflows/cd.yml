@@ -36,7 +36,6 @@ jobs:
         run: |
           sha="${{ github.event.workflow_run.head_sha || github.sha }}"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "short_sha=${sha:0:7}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout do commit verificado pela CI
         uses: actions/checkout@v7
@@ -57,6 +56,23 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Lê o <version> de primeiro nível do pom.xml (não confundir com a versão
+      # de alguma dependência) e descarta o sufixo (ex.: "-SNAPSHOT"), deixando
+      # só a parte numérica como tag — ex.: "1.1.1-SNAPSHOT" vira "1.1.1".
+      - name: Extrair a versão do projeto (pom.xml)
+        id: version
+        run: |
+          set -euo pipefail
+          numerica=$(python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          ns = {"m": "http://maven.apache.org/POM/4.0.0"}
+          versao = ET.parse("pom.xml").getroot().find("m:version", ns).text
+          print(versao.split("-")[0])
+          PY
+          )
+          echo "Versão do pom.xml -> tag: $numerica"
+          echo "version=$numerica" >> "$GITHUB_OUTPUT"
+
       - name: Calcular tags e metadados da imagem
         id: meta
         uses: docker/metadata-action@v5
@@ -64,7 +80,7 @@ jobs:
           images: ${{ vars.DOCKERHUB_USERNAME }}/vida-conecta-backend
           tags: |
             type=raw,value=latest
-            type=raw,value=${{ steps.commit.outputs.short_sha }}
+            type=raw,value=${{ steps.version.outputs.version }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
