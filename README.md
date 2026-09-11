@@ -137,14 +137,14 @@ A imagem é multi-arquitetura (`linux/amd64` + `linux/arm64`, via Buildx/QEMU), 
    - **Secrets** → `DOCKERHUB_TOKEN` = o Access Token gerado.
 3. Repositório de destino: `<DOCKERHUB_USERNAME>/vida-conecta-backend` — o Docker Hub cria o repositório automaticamente no primeiro push (fica público por padrão; torne privado nas configurações do repositório se necessário).
 
-### Rodando no EC2
+### Subindo pela primeira vez no EC2
 
-Na instância (Amazon Linux 2023 com Docker instalado):
+Na instância (feito manualmente, uma única vez — deploys seguintes são automáticos, ver abaixo):
 
 ```bash
 docker pull <usuario>/vida-conecta-backend:latest
 
-docker run -d --name vida-conecta-backend --restart unless-stopped -p 8080:8080 \
+docker run -d --name vida-conecta-api --restart unless-stopped -p 8080:8080 \
   -e DATABASE_URL=jdbc:postgresql://<host-do-postgres>:5432/vida_conecta \
   -e DATABASE_USERNAME=vida_conecta \
   -e DATABASE_PASSWORD=<senha> \
@@ -158,7 +158,33 @@ docker run -d --name vida-conecta-backend --restart unless-stopped -p 8080:8080 
   <usuario>/vida-conecta-backend:latest
 ```
 
-Para atualizar depois de uma nova publicação: `docker pull ... && docker stop vida-conecta-backend && docker rm vida-conecta-backend` e repita o `docker run`. Automatizar esse pull/restart (via SSM ou SSH a partir do próprio pipeline) fica para uma etapa seguinte — hoje o `cd.yml` só publica a imagem.
+O nome `vida-conecta-api` importa: é o que o deploy automático (abaixo) procura para parar/recriar a cada publicação.
+
+### Deploy automático a cada publicação
+
+Depois do `publish`, o `cd.yml` roda um job `deploy` que manda o EC2 puxar a tag `latest` e recriar o container — via **AWS Systems Manager (SSM) Run Command**, sem SSH exposto à internet e sem chave privada guardada em Secret. O GitHub Actions assume uma IAM role via OIDC (nenhuma credencial de longa duração fica no repositório).
+
+O script que roda dentro da instância (`deploy/ec2-deploy.sh`) clona a configuração de runtime do container atual — variáveis de ambiente que você passou, porta, rede, política de restart — antes de recriá-lo com a imagem nova. Isso significa que **nenhum segredo passa pelo GitHub Actions nem pelo histórico do SSM**: eles já estão no container rodando na instância, e o script só os copia localmente.
+
+Pré-requisitos na conta AWS (feitos uma vez):
+
+1. **IAM role na instância EC2**, com a policy gerenciada `AmazonSSMManagedInstanceCore` (para o SSM Agent se registrar) — anexada em *EC2 → instância → Security → Modify IAM role*.
+2. **Provedor OIDC do GitHub** (`token.actions.githubusercontent.com`) configurado em *IAM → Identity providers*.
+3. **Uma IAM role assumível pelo GitHub Actions**, com trust policy restrita a este repositório e branch (`repo:iagobcosta/vida-conecta-backend:ref:refs/heads/main`) e permissão de `ssm:SendCommand` restrita à instância específica, mais `ssm:GetCommandInvocation`/`ssm:ListCommandInvocations`.
+
+Depois disso, três **Variables** no repositório (*Settings → Secrets and variables → Actions → Variables* — nenhuma é segredo, a ARN da role não concede nada sozinha, quem autoriza é a trust policy):
+
+| Variable | Exemplo |
+| --- | --- |
+| `AWS_ROLE_ARN` | `arn:aws:iam::<account-id>:role/<nome-da-role>` |
+| `AWS_REGION` | `us-east-2` |
+| `EC2_INSTANCE_ID` | `i-xxxxxxxxxxxxxxxxx` |
+
+Para reproduzir o script de deploy localmente (contra containers de teste, não a instância real):
+
+```bash
+DEPLOY_IMAGE=<imagem>:<tag> DEPLOY_CONTAINER=<nome-do-container> bash deploy/ec2-deploy.sh
+```
 
 ## API (v1)
 
