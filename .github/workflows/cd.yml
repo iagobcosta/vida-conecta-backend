@@ -36,6 +36,10 @@ jobs:
       tags: ${{ steps.meta.outputs.tags }}
       labels: ${{ steps.meta.outputs.labels }}
       image: ${{ vars.DOCKERHUB_USERNAME }}/vida-conecta-backend
+      # Tag principal, usada pelo job de deploy — sem "latest": cada publicação
+      # tem uma tag própria e imutável, então dá pra saber com uma olhada só
+      # (na tag) qual versão do código e qual build específico estão rodando.
+      primary_tag: ${{ steps.version.outputs.tag }}
     steps:
       # Para o gatilho workflow_run, github.sha aponta para o commit do próprio
       # cd.yml, não para o commit que a CI verificou — por isso resolvemos e
@@ -52,9 +56,11 @@ jobs:
           ref: ${{ steps.commit.outputs.sha }}
 
       # Lê o <version> de primeiro nível do pom.xml (não confundir com a versão
-      # de alguma dependência) e descarta o sufixo (ex.: "-SNAPSHOT"), deixando
-      # só a parte numérica como tag — ex.: "1.1.1-SNAPSHOT" vira "1.1.1".
-      - name: Extrair a versão do projeto (pom.xml)
+      # de alguma dependência), descarta o sufixo (ex.: "-SNAPSHOT") e junta
+      # com data/hora UTC do build — ex.: "1.1.1-SNAPSHOT" na build de
+      # 11/09/2026 23:05:56 UTC vira a tag "1.1.1.20260911.230556". Cada
+      # publicação vira uma tag imutável própria, em vez de mover "latest".
+      - name: Extrair a versão do projeto e montar a tag
         id: version
         run: |
           set -euo pipefail
@@ -65,8 +71,10 @@ jobs:
           print(versao.split("-")[0])
           PY
           )
-          echo "Versão do pom.xml -> tag: $numerica"
-          echo "version=$numerica" >> "$GITHUB_OUTPUT"
+          carimbo=$(date -u +%Y%m%d.%H%M%S)
+          tag="${numerica}.${carimbo}"
+          echo "Versão do pom.xml: $numerica | Tag final: $tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Calcular tags e metadados da imagem
         id: meta
@@ -74,8 +82,7 @@ jobs:
         with:
           images: ${{ vars.DOCKERHUB_USERNAME }}/vida-conecta-backend
           tags: |
-            type=raw,value=latest
-            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=${{ steps.version.outputs.tag }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
@@ -226,6 +233,7 @@ jobs:
         env:
           IMAGE: ${{ needs.prepare.outputs.image }}
           TAGS: ${{ needs.prepare.outputs.tags }}
+          PRIMARY_TAG: ${{ needs.prepare.outputs.primary_tag }}
         run: |
           set -euo pipefail
           {
@@ -241,20 +249,21 @@ jobs:
             echo "<details><summary>Manifest</summary>"
             echo
             echo '```'
-            docker buildx imagetools inspect "$IMAGE:latest"
+            docker buildx imagetools inspect "$IMAGE:$PRIMARY_TAG"
             echo '```'
             echo "</details>"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------------------
-  # Deploy — manda o EC2 puxar a tag `latest` recém-publicada e recriar o
-  # container da API. Roda via AWS Systems Manager (SSM Run Command): sem SSH
-  # exposto, sem chave privada em Secret. O GitHub Actions assume uma IAM role
-  # via OIDC (nenhuma credencial de longa duração fica gravada no repositório).
+  # Deploy — manda o EC2 puxar a tag recém-publicada (versão+data+hora, nunca
+  # "latest") e recriar o container da API. Roda via AWS Systems Manager (SSM
+  # Run Command): sem SSH exposto, sem chave privada em Secret. O GitHub
+  # Actions assume uma IAM role via OIDC (nenhuma credencial de longa duração
+  # fica gravada no repositório).
   # ---------------------------------------------------------------------------
   deploy:
     name: Deploy no EC2 via SSM
-    needs: merge
+    needs: [prepare, merge]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -270,24 +279,28 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      # O script fica versionado no repo (deploy/ec2-deploy.sh) em vez de
-      # mantido manualmente na instância — assim o próprio EC2 sempre roda a
-      # versão do script que está em main, sem drift entre repo e servidor.
-      # O comando embutido não carrega segredo nenhum: o script lê as env vars
-      # do container atual na própria instância antes de recriá-lo.
+      # O script e o docker-compose.prod.yml ficam versionados no repo em vez
+      # de mantidos manualmente na instância — assim o EC2 sempre roda a
+      # versão que está em main, sem drift entre repo e servidor. Nenhum
+      # segredo passa por aqui: o .env com as credenciais reais já existe na
+      # instância e nunca é sobrescrito por este comando.
+      #
       # O AWS-RunShellScript sempre executa via /bin/sh da instância — em
-      # Amazon Linux isso é bash, mas em Ubuntu (e outras distros) é dash, que
-      # não entende array nem nameref. O shebang do ec2-deploy.sh não tem
-      # nenhum efeito aqui, porque a SSM não roda o conteúdo como um arquivo
-      # executável. Por isso escrevemos o script num arquivo via heredoc (sh
-      # puro, sem problema) e chamamos "bash" nele explicitamente.
+      # Amazon Linux isso é bash, mas em Ubuntu (o caso aqui) é dash, que não
+      # entende array nem nameref. O shebang do ec2-deploy.sh não tem efeito
+      # nenhum nesse mecanismo, porque a SSM não roda o conteúdo como um
+      # arquivo executável. Por isso escrevemos os arquivos via heredoc (sh
+      # puro, sem problema) e chamamos "bash" explicitamente no script.
       - name: Enviar o comando de deploy via SSM
         id: enviar
         run: |
           set -euo pipefail
           {
-            echo "export DEPLOY_IMAGE=${{ vars.DOCKERHUB_USERNAME }}/vida-conecta-backend:latest"
-            echo "export DEPLOY_CONTAINER=vida-conecta-api"
+            echo "export DEPLOY_IMAGE=${{ needs.prepare.outputs.image }}:${{ needs.prepare.outputs.primary_tag }}"
+            echo "export DEPLOY_COMPOSE_DIR=${{ vars.EC2_COMPOSE_DIR }}"
+            echo 'cat <<"EOF_VIDA_CONECTA_COMPOSE" > '"${{ vars.EC2_COMPOSE_DIR }}"'/docker-compose.prod.yml'
+            cat docker-compose.prod.yml
+            echo 'EOF_VIDA_CONECTA_COMPOSE'
             echo 'cat <<"EOF_VIDA_CONECTA_DEPLOY" > /tmp/vida-conecta-deploy.sh'
             cat deploy/ec2-deploy.sh
             echo 'EOF_VIDA_CONECTA_DEPLOY'

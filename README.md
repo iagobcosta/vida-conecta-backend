@@ -123,11 +123,13 @@ docker run --rm -v "$PWD:/src" aquasec/trivy:latest \
 
 | Gatilho | Quando dispara |
 | --- | --- |
-| `workflow_run` (após `CI`) | Toda vez que a CI termina com sucesso em `main` — publica `latest` e a tag `<sha curto>` |
+| `workflow_run` (após `CI`) | Toda vez que a CI termina com sucesso em `main` |
 | `push` de tag `v*.*.*` | Publica também as tags semânticas (`v1.2.3`, `1.2`) — crie a tag a partir de um commit que já esteja em `main` (e portanto já passou na CI) |
 | `workflow_dispatch` | Disparo manual pela aba Actions |
 
-A imagem é multi-arquitetura (`linux/amd64` + `linux/arm64`, via Buildx/QEMU), então a mesma tag roda tanto em EC2 Intel/AMD quanto Graviton. O `Dockerfile` é multi-stage com o JAR extraído em camadas (`-Djarmode=tools extract --layers`) e roda como usuário não-root (`vidaconecta`). Antes de publicar, o job builda a variante `amd64` localmente e escaneia com Trivy — CVE **CRITICAL** com correção disponível barra a publicação, do mesmo jeito que o job de segurança da CI barra o SBOM.
+Cada publicação recebe uma tag própria e imutável: `<versão do pom.xml>.<data>.<hora UTC>` (ex.: `1.1.1.20260911.230556`) — sem `latest`. Assim dá pra saber, só pela tag, exatamente qual código e qual build estão rodando em produção, e um redeploy nunca sobrescreve silenciosamente a tag que outra coisa possa estar usando.
+
+A imagem é multi-arquitetura (`linux/amd64` nativo em `ubuntu-latest` + `linux/arm64` nativo em `ubuntu-24.04-arm`, sem QEMU), então a mesma tag roda tanto em EC2 Intel/AMD quanto Graviton. O `Dockerfile` é multi-stage com o JAR extraído em camadas (`-Djarmode=tools extract --layers`) e roda como usuário não-root (`vidaconecta`). Cada arquitetura é escaneada com Trivy antes de publicar — CVE **CRITICAL** com correção disponível barra a publicação daquela perna, do mesmo jeito que o job de segurança da CI barra o SBOM.
 
 ### Configurar o Docker Hub
 
@@ -139,52 +141,44 @@ A imagem é multi-arquitetura (`linux/amd64` + `linux/arm64`, via Buildx/QEMU), 
 
 ### Subindo pela primeira vez no EC2
 
-Na instância (feito manualmente, uma única vez — deploys seguintes são automáticos, ver abaixo):
-
-```bash
-docker pull <usuario>/vida-conecta-backend:latest
-
-docker run -d --name vida-conecta-api --restart unless-stopped -p 8080:8080 \
-  -e DATABASE_URL=jdbc:postgresql://<host-do-postgres>:5432/vida_conecta \
-  -e DATABASE_USERNAME=vida_conecta \
-  -e DATABASE_PASSWORD=<senha> \
-  -e JWT_SECRET=<segredo-de-producao> \
-  -e EHR_ENCRYPTION_KEY=<chave-base64-32-bytes> \
-  -e SES_ENABLED=true \
-  -e MAIL_FROM=<remetente-verificado> \
-  -e AWS_REGION=us-east-1 \
-  -e CORS_ALLOWED_ORIGINS=https://seu-frontend.exemplo \
-  -e FRONTEND_BASE_URL=https://seu-frontend.exemplo \
-  <usuario>/vida-conecta-backend:latest
-```
-
-O nome `vida-conecta-api` importa: é o que o deploy automático (abaixo) procura para parar/recriar a cada publicação.
+Feito manualmente, uma única vez — deploys seguintes são automáticos (ver abaixo). Siga o cabeçalho do próprio `docker-compose.prod.yml`: certificado com certbot, `.env` a partir de `.env.prod.example` (preenchendo `BACKEND_IMAGE` com uma tag real publicada — veja as tags em `hub.docker.com/r/<usuario>/vida-conecta-backend/tags`, nunca `latest`), e `docker compose -f docker-compose.prod.yml up -d`.
 
 ### Deploy automático a cada publicação
 
-Depois do `publish`, o `cd.yml` roda um job `deploy` que manda o EC2 puxar a tag `latest` e recriar o container — via **AWS Systems Manager (SSM) Run Command**, sem SSH exposto à internet e sem chave privada guardada em Secret. O GitHub Actions assume uma IAM role via OIDC (nenhuma credencial de longa duração fica no repositório).
+Depois do `publish`, o `cd.yml` roda um job `deploy` que atualiza o serviço `api` no EC2 — via **AWS Systems Manager (SSM) Run Command**, sem SSH exposto à internet e sem chave privada guardada em Secret. O GitHub Actions assume uma IAM role via OIDC (nenhuma credencial de longa duração fica no repositório).
 
-O script que roda dentro da instância (`deploy/ec2-deploy.sh`) clona a configuração de runtime do container atual — variáveis de ambiente que você passou, porta, rede, política de restart — antes de recriá-lo com a imagem nova. Isso significa que **nenhum segredo passa pelo GitHub Actions nem pelo histórico do SSM**: eles já estão no container rodando na instância, e o script só os copia localmente.
+O job faz duas coisas na instância, nessa ordem:
+
+1. Escreve o `docker-compose.prod.yml` do commit publicado no diretório da instância — o arquivo na EC2 nunca fica desatualizado em relação ao que está em `main`.
+2. Roda `deploy/ec2-deploy.sh`, que faz `docker compose pull api && docker compose up -d api`.
+
+Como o Compose só recria um serviço quando a configuração dele muda, **Postgres, Nginx e a stack de observabilidade (Prometheus, Grafana, exporter, backup) nunca são tocados** por um deploy — só a imagem da API muda entre uma execução e outra. O `.env` da instância (com os segredos reais) nunca é sobrescrito por esse processo: **nenhum segredo passa pelo GitHub Actions nem pelo histórico do SSM**.
 
 Pré-requisitos na conta AWS (feitos uma vez):
 
 1. **IAM role na instância EC2**, com a policy gerenciada `AmazonSSMManagedInstanceCore` (para o SSM Agent se registrar) — anexada em *EC2 → instância → Security → Modify IAM role*.
 2. **Provedor OIDC do GitHub** (`token.actions.githubusercontent.com`) configurado em *IAM → Identity providers*.
 3. **Uma IAM role assumível pelo GitHub Actions**, com trust policy restrita a este repositório e branch (`repo:iagobcosta/vida-conecta-backend:ref:refs/heads/main`) e permissão de `ssm:SendCommand` restrita à instância específica, mais `ssm:GetCommandInvocation`/`ssm:ListCommandInvocations`.
+4. **`docker-compose.prod.yml`, `.env` (a partir de `.env.prod.example`) e as pastas `nginx/`/`observability/` já colocadas manualmente no diretório da instância** — o pipeline só mantém o `docker-compose.prod.yml` sincronizado a cada deploy, o resto é setup único.
 
-Depois disso, três **Variables** no repositório (*Settings → Secrets and variables → Actions → Variables* — nenhuma é segredo, a ARN da role não concede nada sozinha, quem autoriza é a trust policy):
+Depois disso, quatro **Variables** no repositório (*Settings → Secrets and variables → Actions → Variables* — nenhuma é segredo, a ARN da role não concede nada sozinha, quem autoriza é a trust policy):
 
 | Variable | Exemplo |
 | --- | --- |
 | `AWS_ROLE_ARN` | `arn:aws:iam::<account-id>:role/<nome-da-role>` |
 | `AWS_REGION` | `us-east-2` |
 | `EC2_INSTANCE_ID` | `i-xxxxxxxxxxxxxxxxx` |
+| `EC2_COMPOSE_DIR` | `/home/ubuntu` — diretório na instância onde ficam o `docker-compose.prod.yml`, o `.env` e as pastas `nginx/`/`observability/` |
 
-Para reproduzir o script de deploy localmente (contra containers de teste, não a instância real):
+Para reproduzir o script de deploy localmente (contra um `docker-compose.prod.yml` de teste, não a instância real):
 
 ```bash
-DEPLOY_IMAGE=<imagem>:<tag> DEPLOY_CONTAINER=<nome-do-container> bash deploy/ec2-deploy.sh
+DEPLOY_IMAGE=<imagem>:<tag> DEPLOY_COMPOSE_DIR=<diretório-com-o-compose-e-o-.env> bash deploy/ec2-deploy.sh
 ```
+
+## Produção — stack completa (`docker-compose.prod.yml`)
+
+Postgres + API + Nginx (TLS) + Prometheus + Grafana + backup automático do banco. Ver o cabeçalho do próprio arquivo para o passo a passo de setup inicial na instância (certificado com certbot, `.env` a partir de `.env.prod.example`, `docker compose -f docker-compose.prod.yml up -d`). Depois do setup inicial, deploys de uma nova versão da API acontecem sozinhos via `cd.yml` — não é preciso repetir esse passo manualmente.
 
 ## API (v1)
 
