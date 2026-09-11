@@ -22,9 +22,21 @@ public class ClinicalContentEncryptor {
 	private final SecureRandom secureRandom = new SecureRandom();
 
 	public ClinicalContentEncryptor(EhrProperties properties) {
-		byte[] key = Base64.getDecoder().decode(properties.encryptionKey());
+		String encoded = properties.encryptionKey() == null ? "" : properties.encryptionKey().trim();
+		if (encoded.isEmpty() || encoded.startsWith("<") || encoded.contains(" ")) {
+			throw new IllegalStateException(
+					"EHR_ENCRYPTION_KEY inválida. Gere com `openssl rand -base64 32` e cole só o Base64, sem aspas e sem < >");
+		}
+		byte[] key;
+		try {
+			key = Base64.getDecoder().decode(encoded);
+		} catch (IllegalArgumentException exception) {
+			throw new IllegalStateException(
+					"EHR_ENCRYPTION_KEY não é Base64 válido. Gere com `openssl rand -base64 32`",
+					exception);
+		}
 		if (key.length != 32) {
-			throw new IllegalStateException("vida-conecta.ehr.encryption-key deve ser Base64 de 32 bytes");
+			throw new IllegalStateException("EHR_ENCRYPTION_KEY deve ser Base64 de exatamente 32 bytes (AES-256)");
 		}
 		this.secretKey = new SecretKeySpec(key, "AES");
 	}

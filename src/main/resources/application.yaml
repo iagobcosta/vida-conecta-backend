@@ -18,15 +18,25 @@ spring:
 
 server:
   port: 8080
+  forward-headers-strategy: framework
 
 management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,info,prometheus
   endpoint:
     health:
       show-details: when-authorized
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: vida-conecta
+  prometheus:
+    metrics:
+      export:
+        enabled: true
 
 vida-conecta:
   jwt:
