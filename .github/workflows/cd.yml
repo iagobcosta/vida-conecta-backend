@@ -19,14 +19,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
-    name: Build multi-arquitetura e publicação no Docker Hub
+  # ---------------------------------------------------------------------------
+  # 1. Prepare — resolve o commit certo, a versão e as tags finais uma única
+  #    vez. Os jobs de build (em matriz) só recebem esse resultado pronto.
+  # ---------------------------------------------------------------------------
+  prepare:
+    name: Preparar publicação
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
     if: >-
       github.event_name == 'workflow_dispatch' ||
       startsWith(github.ref, 'refs/tags/v') ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+      tags: ${{ steps.meta.outputs.tags }}
+      labels: ${{ steps.meta.outputs.labels }}
+      image: ${{ vars.DOCKERHUB_USERNAME }}/vida-conecta-backend
     steps:
       # Para o gatilho workflow_run, github.sha aponta para o commit do próprio
       # cd.yml, não para o commit que a CI verificou — por isso resolvemos e
@@ -36,26 +45,11 @@ jobs:
         run: |
           sha="${{ github.event.workflow_run.head_sha || github.sha }}"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "short_sha=${sha:0:7}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout do commit verificado pela CI
         uses: actions/checkout@v7
         with:
           ref: ${{ steps.commit.outputs.sha }}
-
-      - name: Configurar QEMU (emulação para build ARM em runner x86)
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
-      - name: Configurar Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login no Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # Lê o <version> de primeiro nível do pom.xml (não confundir com a versão
       # de alguma dependência) e descarta o sufixo (ex.: "-SNAPSHOT"), deixando
@@ -85,19 +79,55 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
-      # Builda só linux/amd64, carregado no daemon local, para escanear ANTES
-      # de publicar. É esse alvo (e não o multi-arch, que não pode ser
-      # carregado localmente) que decide se a publicação acontece.
-      - name: Build local (amd64) para escaneamento prévio
+  # ---------------------------------------------------------------------------
+  # 2. Build — uma perna por arquitetura, cada uma num runner NATIVO daquela
+  #    arquitetura (sem QEMU: compilar Java sob emulação é muito mais lento).
+  #    Cada perna escaneia sua própria imagem com Trivy antes de publicar, e
+  #    publica só o digest (sem tag ainda) — a tag final só existe depois que
+  #    as duas pernas passarem e o job de merge juntar os dois digests.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build (${{ matrix.platform }})
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout do commit verificado pela CI
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login no Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Carregado no daemon local (runner nativo dessa arquitetura, sem
+      # emulação) para escanear ANTES de publicar. O cache local do BuildKit
+      # já populado aqui é reaproveitado no build de push logo abaixo, então
+      # buildar duas vezes não recompila nada na prática.
+      - name: Build local para escaneamento prévio
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64
+          platforms: ${{ matrix.platform }}
           load: true
           push: false
           tags: vida-conecta-backend:scan
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
 
       - name: Inventariar CVEs da imagem (relatório)
         run: |
@@ -106,7 +136,7 @@ jobs:
             image --severity HIGH,CRITICAL --no-progress --format table \
             vida-conecta-backend:scan | tee trivy-image.txt
           {
-            echo "### Vulnerabilidades HIGH/CRITICAL na imagem"
+            echo "### Vulnerabilidades HIGH/CRITICAL na imagem (${{ matrix.platform }})"
             echo
             echo '```'
             cat trivy-image.txt
@@ -119,23 +149,85 @@ jobs:
             image --severity CRITICAL --ignore-unfixed --no-progress --exit-code 1 \
             vida-conecta-backend:scan
 
-      - name: Build multi-arquitetura e publicação
+      # Publica só o digest, sem tag — a tag final é aplicada no job de merge,
+      # depois que as duas arquiteturas passarem no scan.
+      - name: Publicar por digest
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ matrix.platform }}
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
           provenance: true
           sbom: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          outputs: type=image,name=${{ needs.prepare.outputs.image }},push-by-digest=true,name-canonical=true
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
+
+      - name: Exportar o digest para o job de merge
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Publicar o digest como artefato
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # 3. Merge — junta os dois digests num manifest list multi-arquitetura e
+  #    aplica as tags finais. Não recompila nada: só combina o que as duas
+  #    pernas já publicaram.
+  # ---------------------------------------------------------------------------
+  merge:
+    name: Publicar manifest multi-arquitetura
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Baixar os digests das duas arquiteturas
+        uses: actions/download-artifact@v8
+        with:
+          pattern: digests-*
+          path: /tmp/digests
+          merge-multiple: true
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login no Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Criar e publicar o manifest multi-arquitetura
+        env:
+          IMAGE: ${{ needs.prepare.outputs.image }}
+          TAGS: ${{ needs.prepare.outputs.tags }}
+        run: |
+          set -euo pipefail
+          cd /tmp/digests
+          tag_args=()
+          while IFS= read -r tag; do
+            [ -n "$tag" ] && tag_args+=("-t" "$tag")
+          done <<<"$TAGS"
+          digest_refs=()
+          for digest in *; do
+            digest_refs+=("$IMAGE@sha256:$digest")
+          done
+          docker buildx imagetools create "${tag_args[@]}" "${digest_refs[@]}"
 
       - name: Resumo da publicação
         env:
-          TAGS: ${{ steps.meta.outputs.tags }}
+          IMAGE: ${{ needs.prepare.outputs.image }}
+          TAGS: ${{ needs.prepare.outputs.tags }}
         run: |
+          set -euo pipefail
           {
             echo "### Imagem publicada"
             echo
@@ -145,6 +237,13 @@ jobs:
             echo '```'
             echo "$TAGS"
             echo '```'
+            echo
+            echo "<details><summary>Manifest</summary>"
+            echo
+            echo '```'
+            docker buildx imagetools inspect "$IMAGE:latest"
+            echo '```'
+            echo "</details>"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------------------
@@ -155,7 +254,7 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy:
     name: Deploy no EC2 via SSM
-    needs: publish
+    needs: merge
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
