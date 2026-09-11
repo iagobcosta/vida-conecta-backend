@@ -197,7 +197,7 @@ DEPLOY_IMAGE=<imagem>:<tag> DEPLOY_CONTAINER=<nome-do-container> bash deploy/ec2
 - `POST /api/v1/consents` · `GET /api/v1/consents` · `POST /api/v1/consents/{id}/revoke`
 - `POST /api/v1/patients/{patientId}/ehr` · `GET /api/v1/patients/{patientId}/ehr` · `GET /api/v1/ehr/audit`
 - `POST /api/v1/prescriptions` · `GET /api/v1/prescriptions`
-- `POST /api/v1/video/appointments/{id}/token`
+- `POST /api/v1/video/appointments/{id}/token` · `POST /api/v1/video/appointments/{id}/session`
 
 Cadastro público (`POST /api/v1/auth/register`) é exclusivo para pacientes.
 

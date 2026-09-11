@@ -1,0 +1,204 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "text",
+      "title": "Metas de SLA",
+      "gridPos": { "h": 5, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Disponibilidade 99,9%** — health da API (`up`), restart `unless-stopped`, Postgres com dump diário em volume `postgres_backups`.\n\n**Picos (almoço / fim de tarde)** — taxa de requisições no fuso `America/Sao_Paulo`. O vídeo **não** passa pelo monólito: só token/evento; a mídia fica no Jitsi.\n\n**Queda de chamada ≤ 1%** — `dropped / joined` nas últimas 24h (o front reporta JOINED / COMPLETED / DROPPED)."
+      }
+    },
+    {
+      "type": "stat",
+      "title": "API disponível",
+      "id": 1,
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [{ "expr": "up{job=\"vida-conecta-api\"}", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Disponibilidade 7d (meta 99,9%)",
+      "id": 2,
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 99 },
+              { "color": "green", "value": 99.9 }
+            ]
+          },
+          "min": 98,
+          "max": 100
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "targets": [{ "expr": "avg_over_time(up{job=\"vida-conecta-api\"}[7d]) * 100", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "PostgreSQL disponível",
+      "id": 3,
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+          ]
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [{ "expr": "up{job=\"postgres\"}", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Queda de chamada 24h (meta ≤ 1%)",
+      "id": 4,
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 2 }
+            ]
+          },
+          "max": 10
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "targets": [{
+        "expr": "100 * sum(increase(vida_conecta_video_sessions_total{event=\"dropped\"}[24h])) / clamp_min(sum(increase(vida_conecta_video_sessions_total{event=\"joined\"}[24h])), 1)",
+        "refId": "A"
+      }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Picos de uso da API (America/Sao_Paulo)",
+      "id": 5,
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "fillOpacity": 15, "lineWidth": 2 }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [{
+        "expr": "sum(rate(http_server_requests_seconds_count{application=\"vida-conecta\"}[5m]))",
+        "legendFormat": "req/s",
+        "refId": "A"
+      }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Isolamento: agendamento e prontuário vs vídeo",
+      "id": 6,
+      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "fillOpacity": 12 } }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{uri=~\"/api/v1/appointments.*|/api/v1/doctors.*|/api/v1/me/availability.*\"}[5m]))",
+          "legendFormat": "Agendamento",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{uri=~\"/api/v1/patients/.*/ehr.*|/api/v1/ehr.*\"}[5m]))",
+          "legendFormat": "Prontuário",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{uri=~\"/api/v1/video.*\"}[5m]))",
+          "legendFormat": "Vídeo (só token/evento)",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latência p95 da API",
+      "id": 7,
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{application=\"vida-conecta\"}[5m])) by (le))",
+        "legendFormat": "p95",
+        "refId": "A"
+      }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Sessões de vídeo: entrada, conclusão e queda",
+      "id": 8,
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 10 } } },
+      "targets": [
+        {
+          "expr": "sum(increase(vida_conecta_video_sessions_total{event=\"issued\"}[15m]))",
+          "legendFormat": "Token emitido",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(increase(vida_conecta_video_sessions_total{event=\"joined\"}[15m]))",
+          "legendFormat": "Entrou na sala",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(increase(vida_conecta_video_sessions_total{event=\"completed\"}[15m]))",
+          "legendFormat": "Consulta concluída",
+          "refId": "C"
+        },
+        {
+          "expr": "sum(increase(vida_conecta_video_sessions_total{event=\"dropped\"}[15m]))",
+          "legendFormat": "Queda",
+          "refId": "D"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["vida-conecta", "sla"],
+  "templating": { "list": [] },
+  "time": { "from": "now-24h", "to": "now" },
+  "timezone": "America/Sao_Paulo",
+  "title": "Vida Conecta — disponibilidade, picos e vídeo",
+  "uid": "vida-conecta-sla",
+  "version": 1
+}

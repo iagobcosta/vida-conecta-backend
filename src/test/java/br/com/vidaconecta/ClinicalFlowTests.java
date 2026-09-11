@@ -8,6 +8,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -112,6 +113,16 @@ class ClinicalFlowTests extends AbstractIntegrationTest {
 		mockMvc.perform(post("/api/v1/video/appointments/" + appointmentB + "/token")
 						.header("Authorization", bearer(doctorAToken)))
 				.andExpect(status().isForbidden());
+
+		mockMvc.perform(post("/api/v1/video/appointments/" + appointmentA + "/session")
+						.header("Authorization", bearer(patientToken))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"event\":\"JOINED\"}"))
+				.andExpect(status().isNoContent());
+
+		mockMvc.perform(get("/actuator/prometheus"))
+				.andExpect(status().isOk())
+				.andExpect(content().string(org.hamcrest.Matchers.containsString("vida_conecta_video_sessions")));
 	}
 
 	private String createAndConfirm(String patientToken, String doctorToken, String doctorId, Instant scheduledAt)

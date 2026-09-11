@@ -1,0 +1,155 @@
+# Produção (Ubuntu/AWS): Postgres + API + Nginx (HTTPS → API :8080).
+#
+#   sudo certbot certonly --standalone -d api.seudominio.com
+#   cp .env.prod.example .env && chmod 600 .env
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Libere 80 e 443 no Security Group. Grafana em :3000 (restrinja o SG).
+# Health: https://<API_DOMAIN>/actuator/health
+# Grafana: http://<host>:3000  (dashboard Vida Conecta)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vida-conecta-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?defina POSTGRES_DB no .env}
+      POSTGRES_USER: ${POSTGRES_USER:?defina POSTGRES_USER no .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+    ports:
+      - "5432:5432"
+    volumes:
+      - vida_conecta_pg_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - vida-conecta
+
+  api:
+    image: ${BACKEND_IMAGE:-ppedro3421/vida-conecta-backend:latest}
+    container_name: vida-conecta-api
+    restart: unless-stopped
+    pull_policy: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8080"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      DATABASE_USERNAME: ${POSTGRES_USER}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
+      EHR_ENCRYPTION_KEY: ${EHR_ENCRYPTION_KEY:?defina EHR_ENCRYPTION_KEY no .env}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?defina CORS_ALLOWED_ORIGINS no .env}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:?defina FRONTEND_BASE_URL no .env}
+      MAIL_FROM: ${MAIL_FROM:?defina MAIL_FROM no .env}
+    networks:
+      - vida-conecta
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: vida-conecta-nginx
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?defina API_DOMAIN no .env}
+      NGINX_ENVSUBST_FILTER: API_DOMAIN
+    volumes:
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ${LETSENCRYPT_DIR:-/etc/letsencrypt}:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot
+    networks:
+      - vida-conecta
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.17.1
+    container_name: vida-conecta-postgres-exporter
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATA_SOURCE_URI: postgres:5432/${POSTGRES_DB}?sslmode=disable
+      DATA_SOURCE_USER: ${POSTGRES_USER}
+      DATA_SOURCE_PASS: ${POSTGRES_PASSWORD}
+    networks:
+      - vida-conecta
+
+  postgres-backup:
+    image: postgres:16-alpine
+    container_name: vida-conecta-postgres-backup
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-7}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+    volumes:
+      - postgres_backups:/backups
+      - ./observability/postgres/backup-loop.sh:/usr/local/bin/backup-loop.sh:ro
+    command: ["sh", "/usr/local/bin/backup-loop.sh"]
+    networks:
+      - vida-conecta
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: vida-conecta-prometheus
+    restart: unless-stopped
+    depends_on:
+      - api
+      - postgres-exporter
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - vida-conecta
+
+  grafana:
+    image: grafana/grafana:11.6.2
+    container_name: vida-conecta-grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?defina GRAFANA_ADMIN_PASSWORD no .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/vida-conecta-sla.json
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    networks:
+      - vida-conecta
+
+networks:
+  vida-conecta:
+    driver: bridge
+
+volumes:
+  vida_conecta_pg_prod:
+  certbot_www:
+  postgres_backups:
+  prometheus_data:
+  grafana_data:
