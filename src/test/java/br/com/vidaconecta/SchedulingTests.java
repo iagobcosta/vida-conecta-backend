@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.jayway.jsonpath.JsonPath;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
@@ -14,6 +16,14 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
 
 class SchedulingTests extends AbstractIntegrationTest {
+
+	private static final ZoneId CLINIC_ZONE = ZoneId.of("America/Sao_Paulo");
+
+	// 10h do dia seguinte: `Instant.now() + N horas` é flaky perto da virada do
+	// dia, já que `openClinicHours` abre 00:00–23:59 por dia, sem continuidade.
+	private static Instant horarioSeguro() {
+		return LocalDate.now(CLINIC_ZONE).plusDays(1).atTime(10, 0).atZone(CLINIC_ZONE).toInstant();
+	}
 
 	@Test
 	void shouldCreateConfirmAndRejectOverlappingAppointment() throws Exception {
@@ -24,7 +34,7 @@ class SchedulingTests extends AbstractIntegrationTest {
 		String doctorToken = registerDoctor(doctorEmail, "CRM" + suffix, "Clínica Geral");
 		openClinicHours(doctorToken);
 		String doctorId = currentUserId(doctorToken).toString();
-		Instant start = Instant.now().plus(2, ChronoUnit.HOURS).truncatedTo(ChronoUnit.SECONDS);
+		Instant start = horarioSeguro();
 
 		MvcResult created = mockMvc.perform(post("/api/v1/appointments")
 						.header("Authorization", bearer(patientToken))
@@ -98,7 +108,7 @@ class SchedulingTests extends AbstractIntegrationTest {
 		String patientToken = registerPatient("slot.paciente." + suffix + "@vidaconecta.test", cpf(suffix, "03"));
 		String doctorToken = registerDoctor("slot.medico." + suffix + "@vidaconecta.test", "CRMS" + suffix, "Dermatologia");
 		String doctorId = currentUserId(doctorToken).toString();
-		Instant start = Instant.now().plus(2, ChronoUnit.HOURS).truncatedTo(ChronoUnit.SECONDS);
+		Instant start = horarioSeguro();
 
 		mockMvc.perform(post("/api/v1/appointments")
 						.header("Authorization", bearer(patientToken))
@@ -153,7 +163,7 @@ class SchedulingTests extends AbstractIntegrationTest {
 		String doctorToken = registerDoctor("ntf.medico." + suffix + "@vidaconecta.test", "CRMN" + suffix, "Clínica Geral");
 		openClinicHours(doctorToken);
 		String doctorId = currentUserId(doctorToken).toString();
-		Instant start = Instant.now().plus(2, ChronoUnit.HOURS).truncatedTo(ChronoUnit.SECONDS);
+		Instant start = horarioSeguro();
 
 		MvcResult created = mockMvc.perform(post("/api/v1/appointments")
 						.header("Authorization", bearer(patientToken))
@@ -243,7 +253,7 @@ class SchedulingTests extends AbstractIntegrationTest {
 		String doctorToken = registerDoctor("med.insights." + suffix + "@vidaconecta.test", "CRMI" + suffix, "Cardiologia");
 		openClinicHours(doctorToken);
 		String doctorId = currentUserId(doctorToken).toString();
-		Instant start = Instant.now().plus(3, ChronoUnit.HOURS).truncatedTo(ChronoUnit.SECONDS);
+		Instant start = horarioSeguro();
 
 		mockMvc.perform(post("/api/v1/appointments")
 						.header("Authorization", bearer(patientToken))
