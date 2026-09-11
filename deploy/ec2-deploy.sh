@@ -16,18 +16,6 @@ if ! docker inspect "$CONTAINER" >/dev/null 2>&1; then
 	exit 1
 fi
 
-# "docker inspect --format" acrescenta uma quebra de linha própria no final,
-# além da que o template já produz — sobra um elemento vazio no array depois
-# do mapfile. Filtramos em vez de depender desse detalhe de implementação.
-filtrar_vazios() {
-	local -n arr=$1
-	local item tmp=()
-	for item in "${arr[@]}"; do
-		[ -n "$item" ] && tmp+=("$item")
-	done
-	arr=("${tmp[@]}")
-}
-
 echo "==> Clonando configuração de runtime de '$CONTAINER'..."
 
 # .Config.Env do container traz TUDO: tanto as env vars que você passou com
@@ -36,11 +24,14 @@ echo "==> Clonando configuração de runtime de '$CONTAINER'..."
 # (ex.: um PATH sem o java) com os defaults da imagem ANTIGA. Por isso
 # comparamos com os defaults da imagem antiga e só clonamos o que sobrou —
 # ou seja, só o que foi de fato passado em tempo de execução.
+#
+# "docker inspect --format" acrescenta uma quebra de linha própria no final,
+# além da que o template já produz — o "grep -v '^$'" descarta essa linha
+# vazia antes do mapfile (em vez de "local -n"/nameref, que é recurso do
+# bash 4.3+ e não existe em toda distro).
 IMAGEM_ANTIGA=$(docker inspect "$CONTAINER" --format '{{.Config.Image}}')
-mapfile -t ENVS_DO_CONTAINER < <(docker inspect "$CONTAINER" --format '{{range .Config.Env}}{{.}}{{"\n"}}{{end}}')
-filtrar_vazios ENVS_DO_CONTAINER
-mapfile -t ENVS_DA_IMAGEM_ANTIGA < <(docker inspect "$IMAGEM_ANTIGA" --format '{{range .Config.Env}}{{.}}{{"\n"}}{{end}}')
-filtrar_vazios ENVS_DA_IMAGEM_ANTIGA
+mapfile -t ENVS_DO_CONTAINER < <(docker inspect "$CONTAINER" --format '{{range .Config.Env}}{{.}}{{"\n"}}{{end}}' | grep -v '^$')
+mapfile -t ENVS_DA_IMAGEM_ANTIGA < <(docker inspect "$IMAGEM_ANTIGA" --format '{{range .Config.Env}}{{.}}{{"\n"}}{{end}}' | grep -v '^$')
 
 ENV_ARGS=()
 for env in "${ENVS_DO_CONTAINER[@]}"; do
@@ -57,8 +48,7 @@ done
 # "--flag=valor" num token só: cada linha do mapfile vira um elemento de array,
 # então flag e valor precisam estar juntos, sem espaço, ou o Docker CLI recebe
 # "--publish 8080:8080/tcp" como uma flag desconhecida em vez de duas.
-mapfile -t PORT_ARGS < <(docker inspect "$CONTAINER" --format '{{range $porta, $conf := .HostConfig.PortBindings}}{{range $conf}}--publish={{.HostPort}}:{{$porta}}{{"\n"}}{{end}}{{end}}')
-filtrar_vazios PORT_ARGS
+mapfile -t PORT_ARGS < <(docker inspect "$CONTAINER" --format '{{range $porta, $conf := .HostConfig.PortBindings}}{{range $conf}}--publish={{.HostPort}}:{{$porta}}{{"\n"}}{{end}}{{end}}' | grep -v '^$')
 NETWORK_MODE=$(docker inspect "$CONTAINER" --format '{{.HostConfig.NetworkMode}}')
 RESTART_POLICY=$(docker inspect "$CONTAINER" --format '{{.HostConfig.RestartPolicy.Name}}')
 RESTART_POLICY="${RESTART_POLICY:-unless-stopped}"

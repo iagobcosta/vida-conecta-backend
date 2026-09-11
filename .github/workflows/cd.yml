@@ -275,15 +275,26 @@ jobs:
       # versão do script que está em main, sem drift entre repo e servidor.
       # O comando embutido não carrega segredo nenhum: o script lê as env vars
       # do container atual na própria instância antes de recriá-lo.
+      # O AWS-RunShellScript sempre executa via /bin/sh da instância — em
+      # Amazon Linux isso é bash, mas em Ubuntu (e outras distros) é dash, que
+      # não entende array nem nameref. O shebang do ec2-deploy.sh não tem
+      # nenhum efeito aqui, porque a SSM não roda o conteúdo como um arquivo
+      # executável. Por isso escrevemos o script num arquivo via heredoc (sh
+      # puro, sem problema) e chamamos "bash" nele explicitamente.
       - name: Enviar o comando de deploy via SSM
         id: enviar
         run: |
           set -euo pipefail
-          COMMANDS_JSON=$(jq -n \
-            --arg image "${{ vars.DOCKERHUB_USERNAME }}/vida-conecta-backend:latest" \
-            --arg container "vida-conecta-api" \
-            --rawfile script deploy/ec2-deploy.sh \
-            '["export DEPLOY_IMAGE=" + ($image|@sh), "export DEPLOY_CONTAINER=" + ($container|@sh)] + ($script | split("\n"))')
+          {
+            echo "export DEPLOY_IMAGE=${{ vars.DOCKERHUB_USERNAME }}/vida-conecta-backend:latest"
+            echo "export DEPLOY_CONTAINER=vida-conecta-api"
+            echo 'cat <<"EOF_VIDA_CONECTA_DEPLOY" > /tmp/vida-conecta-deploy.sh'
+            cat deploy/ec2-deploy.sh
+            echo 'EOF_VIDA_CONECTA_DEPLOY'
+            echo 'bash /tmp/vida-conecta-deploy.sh'
+          } > /tmp/ssm-commands.txt
+
+          COMMANDS_JSON=$(jq -Rsc 'split("\n")' /tmp/ssm-commands.txt)
 
           COMMAND_ID=$(aws ssm send-command \
             --document-name "AWS-RunShellScript" \
