@@ -3,125 +3,242 @@
 [![CI](https://github.com/iagobcosta/vida-conecta-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/iagobcosta/vida-conecta-backend/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/iagobcosta/vida-conecta-backend/actions/workflows/codeql.yml/badge.svg)](https://github.com/iagobcosta/vida-conecta-backend/actions/workflows/codeql.yml)
 
-Monólito modular Spring Boot que concentra a API de negócio da plataforma: autenticação, agendamento, consentimento (LGPD), prontuário cifrado, prescrição digital e emissão de token de videochamada. A mídia WebRTC **não** passa por este serviço.
+API de negócio do Vida Conecta, construída como um monólito modular em Spring Boot. O backend concentra autenticação, agendamento, consentimento LGPD, prontuário cifrado, prescrição digital, notificações e emissão de token para a sala de consulta.
+
+> **Status do MVP:** a videochamada já funciona com Jitsi Meet. O backend emite um token mock apenas para autorizar a entrada na sala; a mídia WebRTC não passa por este serviço.
+
+## Índice
+
+- [Módulos](#módulos)
+- [Pré-requisitos](#pré-requisitos)
+- [Execução local](#execução-local)
+- [Configuração](#configuração)
+- [API v1](#api-v1)
+- [Testes](#testes)
+- [CI e qualidade](#ci-e-qualidade)
+- [Entrega contínua](#entrega-contínua)
+- [Deploy no EC2](#deploy-no-ec2)
+- [Segurança e observações](#segurança-e-observações)
 
 ## Módulos
 
-Pacotes em `br.com.vidaconecta`, fronteiras verificadas com [Spring Modulith](https://docs.spring.io/spring-modulith/reference/):
+Os módulos ficam em `br.com.vidaconecta`. Suas fronteiras são verificadas com [Spring Modulith](https://docs.spring.io/spring-modulith/reference/).
 
 | Módulo | Pacote | Responsabilidade |
 | --- | --- | --- |
-| Shared | `shared` | Exceções, `ApiError`, OpenAPI |
-| Identity | `identity` | Cadastro, login JWT, papéis (paciente, médico, admin) e Spring Security |
-| Scheduling | `scheduling` | Médicos, horários disponíveis, consultas, conflitos, confirmar/cancelar |
-| Notification | `notification` | Notificações in-app dos eventos clínicos (confirmação, cancelamento, receita, consentimento) |
-| Consent | `consent` | Consentimento versionado (por médico ou por consulta) |
-| EHR | `ehr` | Prontuário cifrado (AES-GCM) e auditoria de acesso |
-| Prescription | `prescription` | Receita digital ligada à consulta |
-| Portability | `portability` | Exportação de dados (LGPD) |
-| Video | `video` | Token de sala (provider mock; LiveKit depois) |
+| Shared | `shared` | Exceções, `ApiError` e OpenAPI |
+| Identity | `identity` | Cadastro, login JWT, papéis e Spring Security |
+| Scheduling | `scheduling` | Médicos, disponibilidades, consultas e conflitos de agenda |
+| Notification | `notification` | Notificações in-app de eventos clínicos |
+| Consent | `consent` | Consentimento versionado por médico ou consulta |
+| EHR | `ehr` | Prontuário cifrado com AES-GCM e auditoria de acesso |
+| Prescription | `prescription` | Receita digital vinculada à consulta |
+| Portability | `portability` | Exportação de dados conforme a LGPD |
+| Video | `video` | Autorização da sala Jitsi e emissão do token mock |
 
-Identity **é** um módulo: Security é a biblioteca; o bounded context de identidade é quem possui usuários, papéis e JWT. Autorização clínica (quem lê prontuário) fica em Consent + EHR.
+O módulo `Identity` é responsável por usuários, papéis e JWT. A autorização clínica, ou seja, quem pode ler o prontuário, é controlada pelos módulos `Consent` e `EHR`.
 
 ## Pré-requisitos
 
 - Java 21
-- Maven Wrapper (`./mvnw`)
-- Docker (PostgreSQL local e Testcontainers)
+- Maven Wrapper (`mvnw.cmd` no Windows ou `./mvnw` no Linux/macOS)
+- Docker, para PostgreSQL local e Testcontainers
 
-## Subir o banco
+## Execução local
+
+### 1. Subir o banco
 
 ```bash
 docker compose up -d
 ```
 
-## Executar a API
+### 2. Iniciar a API
+
+Windows:
+
+```powershell
+.\mvnw.cmd spring-boot:run
+```
+
+Linux/macOS:
 
 ```bash
 ./mvnw spring-boot:run
 ```
 
+Endpoints locais:
+
 - API: http://localhost:8080
 - Swagger UI: http://localhost:8080/swagger-ui.html
-- Health: http://localhost:8080/actuator/health
+- Health check: http://localhost:8080/actuator/health
 
-### Variáveis de ambiente
+## Configuração
 
-| Variável | Padrão (dev) |
+As configurações podem ser fornecidas por variáveis de ambiente. Os valores abaixo são adequados para desenvolvimento local.
+
+| Variável | Padrão ou finalidade |
 | --- | --- |
 | `DATABASE_URL` | `jdbc:postgresql://localhost:5432/vida_conecta` |
-| `DATABASE_USERNAME` / `DATABASE_PASSWORD` | `vida_conecta` |
-| `JWT_SECRET` | chave local de desenvolvimento (≥ 32 caracteres) |
-| `EHR_ENCRYPTION_KEY` | Base64 de 32 bytes |
-| `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` (aceita padrões, ex. `https://*.vercel.app`) |
-| `FRONTEND_BASE_URL` | `http://localhost:5173` (link dos convites; na Vercel use a URL do front) |
-| `SES_ENABLED` | `false` (em `true`, envia convite pelo Amazon SES) |
-| `MAIL_FROM` | remetente verificado no SES |
+| `DATABASE_USERNAME` | `vida_conecta` |
+| `DATABASE_PASSWORD` | Senha do banco local |
+| `JWT_SECRET` | Segredo local com pelo menos 32 caracteres |
+| `EHR_ENCRYPTION_KEY` | Chave Base64 de 32 bytes para o prontuário |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` |
+| `FRONTEND_BASE_URL` | `http://localhost:5173`, usado nos links de convite |
+| `SES_ENABLED` | `false`; quando `true`, envia convites pelo Amazon SES |
+| `MAIL_FROM` | Remetente verificado no SES |
 | `AWS_REGION` | `us-east-1` |
-| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | credenciais IAM com permissão `ses:SendEmail` (não versionar) |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Credenciais IAM com `ses:SendEmail`; nunca versionar |
+
+O envio de e-mail implementado é usado para convites de médicos feitos pelo administrador. A validação de e-mail no cadastro ainda não faz parte do MVP.
+
+### Convite de médicos
+
+Médicos não se cadastram sozinhos. O administrador envia um convite com nome e e-mail; o médico conclui o cadastro pelo link recebido. Com `SES_ENABLED=false`, o link aparece no log da API e no painel administrativo. Com `SES_ENABLED=true`, o envio é feito pelo Amazon SES.
+
+Não grave Access Keys no YAML. Em desenvolvimento, o `SesClient` pode usar as credenciais configuradas pelo AWS CLI:
+
+```bash
+aws configure
+```
+
+## API v1
+
+Todas as rotas protegidas usam o header:
+
+```text
+Authorization: Bearer <token>
+```
+
+### Autenticação e conta
+
+- `POST /api/v1/auth/register` — cadastro de paciente
+- `POST /api/v1/auth/register/admin` — cadastro inicial de administrador
+- `POST /api/v1/auth/register/doctor` — conclusão do cadastro por convite
+- `GET /api/v1/auth/invites/{token}` — consulta de convite
+- `POST /api/v1/auth/login` — login
+- `GET /api/v1/auth/me` — usuário autenticado
+- `PATCH /api/v1/auth/me` — atualização de dados
+- `DELETE /api/v1/auth/me` — exclusão/anonimização da conta
+- `GET /api/v1/auth/me/export` — exportação dos dados do titular
+
+### Administração
+
+- `GET /api/v1/admin/bootstrap-token`
+- `GET|POST /api/v1/admin/doctors/invites`
+- `GET /api/v1/admin/doctors`
+- `PATCH /api/v1/admin/doctors/{id}/enabled`
+- `GET /api/v1/admin/insights`
+
+O painel administrativo apresenta totais de consultas, evolução dos últimos 30 dias, especialidades e censo do sistema. Médicos desativados deixam de aparecer na listagem pública e não conseguem acessar a plataforma.
+
+### Agendamento
+
+- `GET /api/v1/doctors`
+- `GET /api/v1/doctors/{id}/availability`
+- `GET /api/v1/doctors/{id}/slots`
+- `GET|POST /api/v1/me/availability`
+- `DELETE /api/v1/me/availability/{id}`
+- `POST /api/v1/appointments`
+- `GET /api/v1/appointments`
+- `GET /api/v1/appointments/{id}`
+- `POST /api/v1/appointments/{id}/confirm`
+- `POST /api/v1/appointments/{id}/cancel`
+- `POST /api/v1/appointments/{id}/complete`
+
+Ao cancelar, o médico deve informar um motivo com pelo menos 10 caracteres. O paciente recebe uma notificação e pode reagendar.
+
+### Notificações, consentimento e prontuário
+
+- `GET /api/v1/notifications`
+- `GET /api/v1/notifications/unread-count`
+- `POST /api/v1/notifications/{id}/read`
+- `POST /api/v1/notifications/read-all`
+- `POST /api/v1/consents`
+- `GET /api/v1/consents`
+- `POST /api/v1/consents/{id}/revoke`
+- `POST /api/v1/patients/{patientId}/ehr`
+- `GET /api/v1/patients/{patientId}/ehr`
+- `GET /api/v1/ehr/audit`
+
+O médico só acessa o histórico clínico quando existe consentimento válido. O prontuário é cifrado e os acessos são auditados.
+
+### Prescrição e vídeo
+
+- `POST /api/v1/prescriptions`
+- `GET /api/v1/prescriptions`
+- `GET /api/v1/prescriptions/{id}`
+- `POST /api/v1/video/appointments/{id}/token`
+- `POST /api/v1/video/appointments/{id}/session`
+
+O endpoint de vídeo libera um token mock somente para consulta confirmada e dentro da janela de atendimento. O frontend usa esse resultado para entrar na sala Jitsi; a mídia não passa pelo backend.
 
 ## Testes
+
+Windows:
+
+```powershell
+.\mvnw.cmd test
+```
+
+Linux/macOS:
 
 ```bash
 ./mvnw test
 ```
 
-Os testes de integração sobem PostgreSQL via Testcontainers. `ModularityTests` valida que um módulo só usa a API pública (`api/`) dos outros.
+Os testes de integração usam PostgreSQL via Testcontainers. `ModularityTests` verifica se os módulos respeitam suas APIs públicas.
 
-Para rodar a suíte com o mesmo portão de cobertura da CI:
+Para executar a verificação com o mesmo limite de cobertura da CI:
 
 ```bash
 ./mvnw verify -Djacoco.line.minimum=0.80
 ```
 
-O relatório fica em `target/site/jacoco/index.html`.
+O relatório de cobertura fica em `target/site/jacoco/index.html`.
 
-## Integração contínua
+## CI e qualidade
 
-Toda a CI roda no GitHub Actions. `ci.yml` é a pipeline principal; os outros workflows cuidam de análise de segurança e das regras de pull request.
+A CI principal é executada pelo GitHub Actions e valida:
 
-| Job | O que valida | Reprova quando |
-| --- | --- | --- |
-| **Build e empacotamento** | POM válido, compilação de `main` e `test`, JAR executável e SBOM (CycloneDX) | Erro de compilação ou de empacotamento |
-| **Arquitetura modular** | `ModularityTests` isolado, sem Docker — feedback em ~1 min | Um módulo acessa algo fora do `api/` de outro |
-| **Testes e cobertura** | Suíte completa com Testcontainers + `jacoco:check` | Teste vermelho ou cobertura de linhas abaixo de 80% |
-| **Smoke test** | JAR real contra PostgreSQL real: Flyway na base limpa, boot com config de produção, `/v3/api-docs` e 401 em rota protegida | App não sobe, migration falha, contrato vazio ou rota protegida sem autenticação |
-| **Segurança** | `gitleaks` no histórico do Git e `trivy` sobre o SBOM | Segredo versionado ou CVE **CRITICAL** com correção disponível |
-| **Qualidade e convenções** | `actionlint` nos workflows, padrão de nome das migrations, imutabilidade das migrations já mergeadas, relatório de dependências | Workflow inválido, migration fora do padrão ou alteração de `V*.sql` já mergeado |
-| **Imagem de container** | `spring-boot:build-image` (buildpacks) — só em `main` | A imagem não constrói |
-| **CI concluída** | Agrega o resultado de todos os jobs | Qualquer job acima falhou |
+| Verificação | Objetivo |
+| --- | --- |
+| Build e empacotamento | Compilar o projeto, gerar JAR executável e SBOM |
+| Arquitetura modular | Executar `ModularityTests` sem Docker |
+| Testes e cobertura | Executar a suíte com Testcontainers e JaCoCo |
+| Smoke test | Subir o JAR contra PostgreSQL e validar endpoints básicos |
+| Segurança | Executar Gitleaks, Trivy e CodeQL |
+| Qualidade | Validar workflows, migrations e dependências |
+| Imagem | Construir a imagem de container em `main` |
 
 Workflows auxiliares:
 
-- **`codeql.yml`** — SAST do código Java (`security-and-quality`), em push, PR e semanalmente. Os alertas aparecem em *Security → Code scanning*.
-- **`pull-request.yml`** — título do PR em Conventional Commits (o merge é por squash) e `dependency-review` barrando CVE alta ou licença incompatível entrando junto com a mudança.
-- **`dependabot.yml`** — PRs semanais de atualização de dependências Maven e das próprias actions, agrupados por ecossistema.
+- `codeql.yml`: análise SAST do código Java.
+- `pull-request.yml`: Conventional Commits e análise de dependências.
+- `dependabot.yml`: atualizações semanais de dependências.
 
-### Reproduzindo os portões localmente
+Comandos úteis para validação local:
 
 ```bash
-./mvnw verify -Djacoco.line.minimum=0.80          # testes + cobertura
-./mvnw test -Dtest=ModularityTests                # fronteiras entre módulos
-bash .github/scripts/check-migrations.sh          # convenção das migrations
-docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest          # workflows
-docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:latest \
-  git /repo --config /repo/.gitleaks.toml --redact --no-banner            # segredos
-docker run --rm -v "$PWD:/src" aquasec/trivy:latest \
-  sbom --severity HIGH,CRITICAL /src/target/bom.json                      # CVEs (após package)
+./mvnw verify -Djacoco.line.minimum=0.80
+./mvnw test -Dtest=ModularityTests
+bash .github/scripts/check-migrations.sh
 ```
 
 ### Configuração no GitHub
 
-1. Em *Settings → Branches*, proteja `main` exigindo o check **`CI concluída`** — ele já cobre todos os outros jobs.
-2. *Security → Code scanning* precisa estar habilitado para o CodeQL publicar alertas (automático em repositório público).
-3. `dependency-review` depende do *Dependency graph* ligado em *Settings → Code security* (quando estiver desligado, o workflow registra aviso e pula essa checagem).
-4. Nenhum secret é necessário para a CI: o smoke test usa credenciais descartáveis definidas no próprio workflow. A CD (publicação da imagem) precisa das credenciais descritas abaixo.
+1. Proteja a branch `main` em *Settings → Branches* e exija o check **CI concluída** antes do merge.
+2. Habilite o *Code scanning* em *Security → Code scanning* para o CodeQL publicar alertas.
+3. Mantenha o *Dependency graph* habilitado em *Settings → Code security* para executar o `dependency-review` nos pull requests.
+4. Use títulos de pull request em Conventional Commits, por exemplo: `feat: adiciona cancelamento de consulta`.
 
-## Entrega contínua (CD) — imagem de container
+A CI não precisa de secrets. O smoke test usa credenciais descartáveis, e o `pull-request.yml` pode pular a revisão de dependências quando o Dependency graph estiver indisponível.
 
-`cd.yml` builda a imagem com Docker Buildx e publica no Docker Hub. Ele **não** roda em pull request — só depois que `ci.yml` passa em `main`, em uma tag de versão, ou sob demanda:
+## Entrega contínua
 
-| Gatilho | Quando dispara |
+O workflow `cd.yml` constrói uma imagem multi-arquitetura (`linux/amd64` e `linux/arm64`) com Docker Buildx e publica no Docker Hub.
+
+| Gatilho | Publicação |
 | --- | --- |
 | `workflow_run` (após `CI`) | Toda vez que a CI termina com sucesso em `main` |
 | `push` de tag `v*.*.*` | Publica também as tags semânticas (`v1.2.3`, `1.2`) — crie a tag a partir de um commit que já esteja em `main` (e portanto já passou na CI) |
@@ -131,19 +248,68 @@ Cada publicação recebe uma tag própria e imutável: `<versão do pom.xml>.<da
 
 A imagem é multi-arquitetura (`linux/amd64` nativo em `ubuntu-latest` + `linux/arm64` nativo em `ubuntu-24.04-arm`, sem QEMU), então a mesma tag roda tanto em EC2 Intel/AMD quanto Graviton. O `Dockerfile` é multi-stage com o JAR extraído em camadas (`-Djarmode=tools extract --layers`) e roda como usuário não-root (`vidaconecta`). Cada arquitetura é escaneada com Trivy antes de publicar — CVE **CRITICAL** com correção disponível barra a publicação daquela perna, do mesmo jeito que o job de segurança da CI barra o SBOM.
 
+Configure no GitHub:
+
+- Variable `DOCKERHUB_USERNAME` com o usuário do Docker Hub.
+- Secret `DOCKERHUB_TOKEN` com um Access Token do Docker Hub.
+
+Destino da imagem: `<DOCKERHUB_USERNAME>/vida-conecta-backend`.
+
 ### Configurar o Docker Hub
 
-1. Crie um [Access Token](https://hub.docker.com/settings/security) no Docker Hub (não use a senha da conta).
-2. Em *Settings → Secrets and variables → Actions* do repositório:
-   - **Variables** → `DOCKERHUB_USERNAME` = seu usuário do Docker Hub (não é segredo, só identifica o repositório da imagem).
-   - **Secrets** → `DOCKERHUB_TOKEN` = o Access Token gerado.
-3. Repositório de destino: `<DOCKERHUB_USERNAME>/vida-conecta-backend` — o Docker Hub cria o repositório automaticamente no primeiro push (fica público por padrão; torne privado nas configurações do repositório se necessário).
+1. Crie um Access Token em *Docker Hub → Account Settings → Security*; não use a senha da conta.
+2. No repositório GitHub, cadastre `DOCKERHUB_USERNAME` como **Variable**.
+3. Cadastre `DOCKERHUB_TOKEN` como **Secret**.
+4. Garanta que o repositório de destino `<DOCKERHUB_USERNAME>/vida-conecta-backend` exista ou permita sua criação no primeiro push.
 
-### Subindo pela primeira vez no EC2
+O workflow publica uma tag imutável por build e também tags semânticas nas releases. O deploy de produção deve usar uma tag real publicada, nunca `latest`.
+
+## Deploy no EC2
 
 Feito manualmente, uma única vez — deploys seguintes são automáticos (ver abaixo). Siga o cabeçalho do próprio `docker-compose.prod.yml`: certificado com certbot, `.env` a partir de `.env.prod.example` (preenchendo `BACKEND_IMAGE` com uma tag real publicada — veja as tags em `hub.docker.com/r/<usuario>/vida-conecta-backend/tags`, nunca `latest`), e `docker compose -f docker-compose.prod.yml up -d`.
 
-### Deploy automático a cada publicação
+### Variáveis de produção
+
+Copie `.env.prod.example` para `.env` no mesmo diretório do Compose e aplique `chmod 600 .env`. Os valores principais são:
+
+| Variável | Finalidade |
+| --- | --- |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Credenciais do PostgreSQL |
+| `JWT_SECRET` | Segredo para assinatura dos tokens JWT |
+| `JWT_EXPIRATION_MINUTES` | Tempo de expiração do JWT |
+| `EHR_ENCRYPTION_KEY` | Chave Base64 de 32 bytes para cifrar o prontuário |
+| `CORS_ALLOWED_ORIGINS` | Origens permitidas para o frontend |
+| `FRONTEND_BASE_URL` | URL usada nos links de convite |
+| `SES_ENABLED`, `MAIL_FROM`, `AWS_REGION` | Configuração de envio de convites por SES |
+| `API_DOMAIN` | Domínio usado pelo Nginx e pelo certificado TLS |
+| `BACKEND_IMAGE` | Imagem e tag imutável publicadas no Docker Hub |
+| `GRAFANA_PORT`, `GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD` | Acesso ao Grafana |
+
+Para o primeiro setup, libere as portas 80 e 443 no Security Group, gere o certificado com Certbot e execute:
+
+```bash
+sudo certbot certonly --standalone -d api.seudominio.com
+cp .env.prod.example .env
+chmod 600 .env
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
+
+### Stack de produção
+
+O `docker-compose.prod.yml` executa PostgreSQL, API, Nginx com TLS, Prometheus, Grafana, exporter do PostgreSQL e backup automático. O health check da API fica disponível em `https://<API_DOMAIN>/actuator/health`; o Grafana usa a porta configurada em `GRAFANA_PORT` e deve ser restrito no Security Group.
+
+## Segurança e observações
+
+- Não versionar segredos, chaves AWS, `JWT_SECRET` ou `EHR_ENCRYPTION_KEY`.
+- Usar HTTPS em produção.
+- O acesso ao prontuário depende de autenticação, papéis e consentimento válido.
+- O prontuário usa criptografia AES-GCM e possui auditoria de acessos.
+- O banco transacional e o storage clínico devem usar criptografia em repouso e backups.
+- A mídia WebRTC do Jitsi não é armazenada pelo backend.
+- O primeiro administrador usa um token UUID de bootstrap armazenado em `admin_bootstrap_tokens`; após o uso, o token é substituído.
+
+### Deploy automático após a publicação
 
 Depois do `publish`, o `cd.yml` roda um job `deploy` que atualiza o serviço `api` no EC2 — via **AWS Systems Manager (SSM) Run Command**, sem SSH exposto à internet e sem chave privada guardada em Secret. O GitHub Actions assume uma IAM role via OIDC (nenhuma credencial de longa duração fica no repositório).
 
@@ -175,58 +341,3 @@ Para reproduzir o script de deploy localmente (contra um `docker-compose.prod.ym
 ```bash
 DEPLOY_IMAGE=<imagem>:<tag> DEPLOY_COMPOSE_DIR=<diretório-com-o-compose-e-o-.env> bash deploy/ec2-deploy.sh
 ```
-
-## Produção — stack completa (`docker-compose.prod.yml`)
-
-Postgres + API + Nginx (TLS) + Prometheus + Grafana + backup automático do banco. Ver o cabeçalho do próprio arquivo para o passo a passo de setup inicial na instância (certificado com certbot, `.env` a partir de `.env.prod.example`, `docker compose -f docker-compose.prod.yml up -d`). Depois do setup inicial, deploys de uma nova versão da API acontecem sozinhos via `cd.yml` — não é preciso repetir esse passo manualmente.
-
-## API (v1)
-
-- `POST /api/v1/auth/register` (paciente) · `POST /api/v1/auth/register/admin` · `POST /api/v1/auth/register/doctor` · `GET /api/v1/auth/invites/{token}` · `POST /api/v1/auth/login` · `GET /api/v1/auth/me` · `DELETE /api/v1/auth/me` · `PATCH /api/v1/auth/me` · `GET /api/v1/auth/me/export`
-- `GET /api/v1/admin/bootstrap-token` · `GET|POST /api/v1/admin/doctors/invites` · `GET /api/v1/admin/doctors` · `PATCH /api/v1/admin/doctors/{id}/enabled` · `GET /api/v1/admin/insights`
-- `GET /api/v1/doctors` · `GET /api/v1/doctors/{id}/availability` · `GET /api/v1/doctors/{id}/slots`
-- `GET|POST /api/v1/me/availability` · `DELETE /api/v1/me/availability/{id}`
-- `POST /api/v1/appointments` · `GET /api/v1/appointments` · `GET /api/v1/appointments/{id}` · `POST .../confirm` · `POST .../cancel` · `POST .../complete`
-- `GET /api/v1/notifications` · `GET /api/v1/notifications/unread-count` · `POST .../{id}/read` · `POST .../read-all`
-- `POST /api/v1/consents` · `GET /api/v1/consents` · `POST /api/v1/consents/{id}/revoke`
-- `POST /api/v1/patients/{patientId}/ehr` · `GET /api/v1/patients/{patientId}/ehr` · `GET /api/v1/ehr/audit`
-- `POST /api/v1/prescriptions` · `GET /api/v1/prescriptions`
-- `POST /api/v1/video/appointments/{id}/token` · `POST /api/v1/video/appointments/{id}/session`
-
-Cadastro público (`POST /api/v1/auth/register`) é exclusivo para pacientes.
-
-O primeiro administrador usa o token UUID guardado em `admin_bootstrap_tokens` (seed local: `b2222222-2222-4222-8222-222222222222`) em `POST /api/v1/auth/register/admin`. Depois do uso o token é apagado e um novo é gravado; a resposta devolve `nextBootstrapToken`. Administradores autenticados consultam o token vigente em `GET /api/v1/admin/bootstrap-token`.
-
-Médicos não se cadastram sozinhos: o admin convida com nome e e-mail (`POST /api/v1/admin/doctors/invites`). O convite vai por e-mail (AWS SES quando `SES_ENABLED=true`) com o link `/cadastro/medico?token=...`. O médico conclui em `POST /api/v1/auth/register/doctor`.
-
-Para o SES, **não** grave Access Key no YAML.
-
-**Na sua máquina, sem e-mail real:** deixe `SES_ENABLED` em `false` (padrão). O convite aparece no log da API e o admin vê o link na tela.
-
-**Na sua máquina, com SES de verdade:**
-
-1. No console AWS, verifique o remetente (`MAIL_FROM`). Em sandbox, verifique também o e-mail do médico de teste.
-2. Grave as credenciais uma vez (não precisa exportar a cada execução):
-
-```bash
-aws configure
-```
-
-Isso cria `~/.aws/credentials`. O `SesClient` lê esse arquivo automaticamente.
-
-3. Suba a API com o SES ligado:
-
-```bash
-export SES_ENABLED=true
-export MAIL_FROM=seu-email-verificado@seudominio.com
-export AWS_REGION=us-east-1
-./mvnw spring-boot:run
-```
-
-Se não usar o AWS CLI, exporte também `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY` no mesmo terminal. Em EC2/ECS/Lambda as chaves podem ficar na role IAM.
-
-O painel do administrador (`GET /api/v1/admin/insights`) devolve totais de consultas, evolução dos últimos 30 dias (fuso `America/Sao_Paulo`), especialidades e o censo do sistema. `PATCH /api/v1/admin/doctors/{id}/enabled` ativa ou desativa o médico: conta desativada some da listagem pública e não consegue entrar.
-
-JWT no header `Authorization: Bearer <token>`.
-
-O médico precisa informar um motivo (mínimo 10 caracteres) ao cancelar. O paciente recebe a notificação com o motivo e um atalho para reagendar.
