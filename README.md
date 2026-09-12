@@ -5,7 +5,7 @@
 
 API de negócio do Vida Conecta, construída como um monólito modular em Spring Boot. O backend concentra autenticação, agendamento, consentimento LGPD, prontuário cifrado, prescrição digital, notificações e emissão de token para a sala de consulta.
 
-> **Status do MVP:** o token da sala de vídeo ainda é mock. A integração com WebRTC/SFU, como LiveKit, será realizada em uma etapa futura. A mídia da chamada não passa pelo backend.
+> **Status do MVP:** a videochamada já funciona com Jitsi Meet. O backend emite um token mock apenas para autorizar a entrada na sala; a mídia WebRTC não passa por este serviço.
 
 ## Índice
 
@@ -34,7 +34,7 @@ Os módulos ficam em `br.com.vidaconecta`. Suas fronteiras são verificadas com 
 | EHR | `ehr` | Prontuário cifrado com AES-GCM e auditoria de acesso |
 | Prescription | `prescription` | Receita digital vinculada à consulta |
 | Portability | `portability` | Exportação de dados conforme a LGPD |
-| Video | `video` | Emissão do token mock da sala de consulta |
+| Video | `video` | Autorização da sala Jitsi e emissão do token mock |
 
 O módulo `Identity` é responsável por usuários, papéis e JWT. A autorização clínica, ou seja, quem pode ler o prontuário, é controlada pelos módulos `Consent` e `EHR`.
 
@@ -171,7 +171,7 @@ O médico só acessa o histórico clínico quando existe consentimento válido. 
 - `POST /api/v1/video/appointments/{id}/token`
 - `POST /api/v1/video/appointments/{id}/session`
 
-O endpoint de vídeo libera um token mock somente para consulta confirmada e dentro da janela de atendimento. Uma integração real com LiveKit/SFU será adicionada posteriormente.
+O endpoint de vídeo libera um token mock somente para consulta confirmada e dentro da janela de atendimento. O frontend usa esse resultado para entrar na sala Jitsi; a mídia não passa pelo backend.
 
 ## Testes
 
@@ -306,7 +306,7 @@ O `docker-compose.prod.yml` executa PostgreSQL, API, Nginx com TLS, Prometheus, 
 - O acesso ao prontuário depende de autenticação, papéis e consentimento válido.
 - O prontuário usa criptografia AES-GCM e possui auditoria de acessos.
 - O banco transacional e o storage clínico devem usar criptografia em repouso e backups.
-- A mídia WebRTC não é armazenada pelo backend.
+- A mídia WebRTC do Jitsi não é armazenada pelo backend.
 - O primeiro administrador usa um token UUID de bootstrap armazenado em `admin_bootstrap_tokens`; após o uso, o token é substituído.
 
 ### Deploy automático após a publicação
