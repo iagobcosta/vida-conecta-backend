@@ -152,6 +152,8 @@ O job faz duas coisas na instância, nessa ordem:
 1. Escreve o `docker-compose.prod.yml` do commit publicado no diretório da instância — o arquivo na EC2 nunca fica desatualizado em relação ao que está em `main`.
 2. Roda `deploy/ec2-deploy.sh`, que faz `docker compose pull api && docker compose up -d api`.
 
+Não existe transferência de arquivo de verdade (nada de `scp`/`rsync`): o `AWS-RunShellScript` do SSM só aceita uma lista de comandos de shell como texto. O job monta, no runner, um script único que primeiro grava o `docker-compose.prod.yml` e o `ec2-deploy.sh` no disco da instância via heredoc (`cat <<"EOF" > arquivo`, com o `EOF` entre aspas para não expandir `$`/variáveis do conteúdo) e só então chama `bash /tmp/vida-conecta-deploy.sh` — ou seja, o conteúdo dos dois arquivos do repo vai embutido, literal, dentro do próprio comando enviado ao `aws ssm send-command`. Isso também explica por que o script é chamado explicitamente com `bash`: o `AWS-RunShellScript` executa tudo via `/bin/sh` da instância (no Ubuntu, `dash`, que não entende array nem nameref), então o shebang do `ec2-deploy.sh` não tem efeito nesse mecanismo.
+
 Como o Compose só recria um serviço quando a configuração dele muda, **Postgres, Nginx e a stack de observabilidade (Prometheus, Grafana, exporter, backup) nunca são tocados** por um deploy — só a imagem da API muda entre uma execução e outra. O `.env` da instância (com os segredos reais) nunca é sobrescrito por esse processo: **nenhum segredo passa pelo GitHub Actions nem pelo histórico do SSM**.
 
 Pré-requisitos na conta AWS (feitos uma vez):
