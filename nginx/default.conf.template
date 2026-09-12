@@ -29,12 +29,16 @@ server {
 	add_header Referrer-Policy strict-origin-when-cross-origin always;
 	add_header X-Frame-Options SAMEORIGIN always;
 
+	# DNS do Docker: resolve o container mesmo depois do redeploy via SSM.
+	resolver 127.0.0.11 valid=10s ipv6=off;
+
 	location /actuator/prometheus {
 		return 404;
 	}
 
 	location / {
-		proxy_pass http://vida-conecta-api:8080;
+		set $api_upstream http://vida-conecta-api:8080;
+		proxy_pass $api_upstream;
 		proxy_http_version 1.1;
 		proxy_set_header Host $host;
 		proxy_set_header X-Real-IP $remote_addr;
@@ -44,5 +48,6 @@ server {
 		proxy_set_header Upgrade $http_upgrade;
 		proxy_set_header Connection $http_connection;
 		proxy_read_timeout 60s;
+		proxy_connect_timeout 5s;
 	}
 }
