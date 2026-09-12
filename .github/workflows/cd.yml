@@ -265,13 +265,15 @@ jobs:
     name: Deploy no EC2 via SSM
     needs: [prepare, merge]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       id-token: write
       contents: read
     steps:
-      - name: Checkout
+      - name: Checkout do commit publicado
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - name: Configurar credenciais AWS (OIDC, sem chave de longa duração)
         uses: aws-actions/configure-aws-credentials@v4
@@ -279,28 +281,31 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      # O script e o docker-compose.prod.yml ficam versionados no repo em vez
-      # de mantidos manualmente na instância — assim o EC2 sempre roda a
-      # versão que está em main, sem drift entre repo e servidor. Nenhum
-      # segredo passa por aqui: o .env com as credenciais reais já existe na
-      # instância e nunca é sobrescrito por este comando.
-      #
-      # O AWS-RunShellScript sempre executa via /bin/sh da instância — em
-      # Amazon Linux isso é bash, mas em Ubuntu (o caso aqui) é dash, que não
-      # entende array nem nameref. O shebang do ec2-deploy.sh não tem efeito
-      # nenhum nesse mecanismo, porque a SSM não roda o conteúdo como um
-      # arquivo executável. Por isso escrevemos os arquivos via heredoc (sh
-      # puro, sem problema) e chamamos "bash" explicitamente no script.
+      # Compose, nginx, observability e o script de deploy vão via heredoc
+      # (sh/dash). O .env da instância não é sobrescrito.
       - name: Enviar o comando de deploy via SSM
         id: enviar
         run: |
           set -euo pipefail
+          DIR="${{ vars.EC2_COMPOSE_DIR }}"
+          emit_file() {
+            local dest="$1" src="$2" eof="$3"
+            echo "mkdir -p \"$(dirname "$dest")\""
+            echo "cat <<'$eof' > \"$dest\""
+            cat "$src"
+            echo "$eof"
+          }
           {
             echo "export DEPLOY_IMAGE=${{ needs.prepare.outputs.image }}:${{ needs.prepare.outputs.primary_tag }}"
-            echo "export DEPLOY_COMPOSE_DIR=${{ vars.EC2_COMPOSE_DIR }}"
-            echo 'cat <<"EOF_VIDA_CONECTA_COMPOSE" > '"${{ vars.EC2_COMPOSE_DIR }}"'/docker-compose.prod.yml'
-            cat docker-compose.prod.yml
-            echo 'EOF_VIDA_CONECTA_COMPOSE'
+            echo "export DEPLOY_COMPOSE_DIR=$DIR"
+            emit_file "$DIR/docker-compose.prod.yml" docker-compose.prod.yml EOF_VIDA_CONECTA_COMPOSE
+            echo "cp \"$DIR/docker-compose.prod.yml\" \"$DIR/docker-compose.yml\""
+            emit_file "$DIR/nginx/default.conf.template" nginx/default.conf.template EOF_VIDA_CONECTA_NGINX
+            emit_file "$DIR/observability/prometheus/prometheus.yml" observability/prometheus/prometheus.yml EOF_VIDA_CONECTA_PROM
+            emit_file "$DIR/observability/grafana/provisioning/datasources/datasource.yml" observability/grafana/provisioning/datasources/datasource.yml EOF_VIDA_CONECTA_DS
+            emit_file "$DIR/observability/grafana/provisioning/dashboards/dashboards.yml" observability/grafana/provisioning/dashboards/dashboards.yml EOF_VIDA_CONECTA_GF_PROV
+            emit_file "$DIR/observability/grafana/dashboards/vida-conecta-sla.json" observability/grafana/dashboards/vida-conecta-sla.json EOF_VIDA_CONECTA_DASH
+            emit_file "$DIR/observability/postgres/backup-loop.sh" observability/postgres/backup-loop.sh EOF_VIDA_CONECTA_BACKUP
             echo 'cat <<"EOF_VIDA_CONECTA_DEPLOY" > /tmp/vida-conecta-deploy.sh'
             cat deploy/ec2-deploy.sh
             echo 'EOF_VIDA_CONECTA_DEPLOY'
@@ -325,7 +330,7 @@ jobs:
           INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
         run: |
           set -euo pipefail
-          for _ in $(seq 1 30); do
+          for _ in $(seq 1 60); do
             status=$(aws ssm get-command-invocation \
               --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
               --query "Status" --output text 2>/dev/null || echo "Pending")
