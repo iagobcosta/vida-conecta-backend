@@ -30,8 +30,8 @@
           "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
         }
       },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
-      "targets": [{ "expr": "up{job=\"vida-conecta-api\"}", "refId": "A" }]
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none", "textMode": "value" },
+      "targets": [{ "expr": "up{job=\"vida-conecta-api\",instance=\"vida-conecta-api:8080\"}", "legendFormat": "API", "refId": "A" }]
     },
     {
       "type": "stat",
@@ -55,8 +55,8 @@
           "max": 100
         }
       },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
-      "targets": [{ "expr": "avg_over_time(up{job=\"vida-conecta-api\"}[7d]) * 100", "refId": "A" }]
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area", "textMode": "value" },
+      "targets": [{ "expr": "avg_over_time(up{job=\"vida-conecta-api\",instance=\"vida-conecta-api:8080\"}[7d]) * 100", "legendFormat": "API", "refId": "A" }]
     },
     {
       "type": "stat",
