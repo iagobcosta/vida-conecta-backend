@@ -26,8 +26,10 @@ class ClinicalFlowTests extends AbstractIntegrationTest {
 		String patientId = currentUserId(patientToken).toString();
 		String doctorAId = currentUserId(doctorAToken).toString();
 		String doctorBId = currentUserId(doctorBToken).toString();
+		// "soon" precisa ficar perto do agora real: o teste de entrada na
+		// videochamada mais abaixo compara com Instant.now() no servidor.
 		Instant soon = Instant.now().plus(5, ChronoUnit.MINUTES).truncatedTo(ChronoUnit.SECONDS);
-		Instant later = Instant.now().plus(3, ChronoUnit.HOURS).truncatedTo(ChronoUnit.SECONDS);
+		Instant later = horarioSeguro();
 
 		String appointmentA = createAndConfirm(patientToken, doctorAToken, doctorAId, soon);
 		String appointmentB = createAndConfirm(patientToken, doctorBToken, doctorBId, later);

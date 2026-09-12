@@ -31,7 +31,11 @@ services:
       - vida-conecta
 
   api:
-    image: ${BACKEND_IMAGE:-ppedro3421/vida-conecta-backend:latest}
+    # Sem tag "latest": cada publicação do cd.yml tem uma tag imutável própria
+    # (<versão>.<data>.<hora>). O pipeline sempre passa BACKEND_IMAGE na hora
+    # do deploy; para subir manualmente pela primeira vez, veja as tags
+    # publicadas em hub.docker.com/r/<usuario>/vida-conecta-backend/tags.
+    image: "${BACKEND_IMAGE:?defina BACKEND_IMAGE no .env, ex. usuario/vida-conecta-backend:1.1.1.20260911.230556}"
     container_name: vida-conecta-api
     restart: unless-stopped
     pull_policy: always
