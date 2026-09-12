@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Redeploy via Docker Compose no EC2 (SSM). Os arquivos de runtime
 # (compose, nginx, observability) já foram escritos neste mesmo comando.
-# O .env da instância não é tocado.
+# O .env da instância não é tocado, exceto BACKEND_IMAGE (tag publicada).
 #
-# Puxa só a imagem da API; o `up -d` recria nginx/grafana/prometheus se o
-# compose ou os volumes de config mudaram. Postgres permanece se nada mudou.
+# Nginx só processa o template no start; Grafana só relê provisioning no
+# start. Por isso nginx/grafana/prometheus são recriados a cada deploy.
+# Postgres permanece se o serviço não mudou.
 set -euo pipefail
 
 IMAGE="${DEPLOY_IMAGE:?defina DEPLOY_IMAGE (ex.: usuario/vida-conecta-backend:1.1.1.20260912.120000)}"
@@ -23,13 +24,22 @@ if [ -f observability/postgres/backup-loop.sh ]; then
 	chmod +x observability/postgres/backup-loop.sh
 fi
 
+if grep -q '^BACKEND_IMAGE=' .env; then
+	sed -i "s|^BACKEND_IMAGE=.*|BACKEND_IMAGE=${IMAGE}|" .env
+else
+	printf '\nBACKEND_IMAGE=%s\n' "$IMAGE" >> .env
+fi
+
 export BACKEND_IMAGE="$IMAGE"
 
 echo "==> Baixando $IMAGE..."
 docker compose -f "$COMPOSE_FILE" pull api
 
-echo "==> Aplicando o compose (API + nginx + observabilidade)..."
-docker compose -f "$COMPOSE_FILE" up -d
+echo "==> Recriando nginx, Grafana e Prometheus com o config do repositório..."
+docker compose -f "$COMPOSE_FILE" up -d --force-recreate --no-deps nginx grafana prometheus
+
+echo "==> Aplicando o compose (API e demais serviços)..."
+docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
 
 echo "==> Aguardando health check..."
 for _ in $(seq 1 40); do
