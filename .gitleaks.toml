@@ -9,6 +9,11 @@ description = "Placeholders de desenvolvimento — nenhum destes valor existe fo
 paths = [
   '''src/test/resources/application-test\.yaml''',
   '''docker-compose\.yml''',
+  # Template com valores em branco de propósito (o real é o .env, gitignored).
+  # A regra genérica de entropia (generic-api-key) funde "EHR_ENCRYPTION_KEY="
+  # vazio com o valor da variável seguinte, tratando "JWT_EXPIRATION_MINUTES=30"
+  # como se fosse o segredo — falso positivo, não há nenhum valor real aqui.
+  '''\.env\.prod\.example''',
 ]
 regexes = [
   # Segredo de dev com default no application.yaml.

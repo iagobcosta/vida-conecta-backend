@@ -24,7 +24,7 @@ class SchedulingTests extends AbstractIntegrationTest {
 		String doctorToken = registerDoctor(doctorEmail, "CRM" + suffix, "Clínica Geral");
 		openClinicHours(doctorToken);
 		String doctorId = currentUserId(doctorToken).toString();
-		Instant start = Instant.now().plus(2, ChronoUnit.HOURS).truncatedTo(ChronoUnit.SECONDS);
+		Instant start = horarioSeguro();
 
 		MvcResult created = mockMvc.perform(post("/api/v1/appointments")
 						.header("Authorization", bearer(patientToken))
@@ -98,7 +98,7 @@ class SchedulingTests extends AbstractIntegrationTest {
 		String patientToken = registerPatient("slot.paciente." + suffix + "@vidaconecta.test", cpf(suffix, "03"));
 		String doctorToken = registerDoctor("slot.medico." + suffix + "@vidaconecta.test", "CRMS" + suffix, "Dermatologia");
 		String doctorId = currentUserId(doctorToken).toString();
-		Instant start = Instant.now().plus(2, ChronoUnit.HOURS).truncatedTo(ChronoUnit.SECONDS);
+		Instant start = horarioSeguro();
 
 		mockMvc.perform(post("/api/v1/appointments")
 						.header("Authorization", bearer(patientToken))
@@ -153,7 +153,7 @@ class SchedulingTests extends AbstractIntegrationTest {
 		String doctorToken = registerDoctor("ntf.medico." + suffix + "@vidaconecta.test", "CRMN" + suffix, "Clínica Geral");
 		openClinicHours(doctorToken);
 		String doctorId = currentUserId(doctorToken).toString();
-		Instant start = Instant.now().plus(2, ChronoUnit.HOURS).truncatedTo(ChronoUnit.SECONDS);
+		Instant start = horarioSeguro();
 
 		MvcResult created = mockMvc.perform(post("/api/v1/appointments")
 						.header("Authorization", bearer(patientToken))
@@ -243,7 +243,7 @@ class SchedulingTests extends AbstractIntegrationTest {
 		String doctorToken = registerDoctor("med.insights." + suffix + "@vidaconecta.test", "CRMI" + suffix, "Cardiologia");
 		openClinicHours(doctorToken);
 		String doctorId = currentUserId(doctorToken).toString();
-		Instant start = Instant.now().plus(3, ChronoUnit.HOURS).truncatedTo(ChronoUnit.SECONDS);
+		Instant start = horarioSeguro();
 
 		mockMvc.perform(post("/api/v1/appointments")
 						.header("Authorization", bearer(patientToken))

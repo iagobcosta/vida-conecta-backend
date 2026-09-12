@@ -169,6 +169,7 @@ O médico só acessa o histórico clínico quando existe consentimento válido. 
 - `GET /api/v1/prescriptions`
 - `GET /api/v1/prescriptions/{id}`
 - `POST /api/v1/video/appointments/{id}/token`
+- `POST /api/v1/video/appointments/{id}/session`
 
 O endpoint de vídeo libera um token mock somente para consulta confirmada e dentro da janela de atendimento. Uma integração real com LiveKit/SFU será adicionada posteriormente.
 
@@ -224,15 +225,28 @@ Comandos úteis para validação local:
 bash .github/scripts/check-migrations.sh
 ```
 
+### Configuração no GitHub
+
+1. Proteja a branch `main` em *Settings → Branches* e exija o check **CI concluída** antes do merge.
+2. Habilite o *Code scanning* em *Security → Code scanning* para o CodeQL publicar alertas.
+3. Mantenha o *Dependency graph* habilitado em *Settings → Code security* para executar o `dependency-review` nos pull requests.
+4. Use títulos de pull request em Conventional Commits, por exemplo: `feat: adiciona cancelamento de consulta`.
+
+A CI não precisa de secrets. O smoke test usa credenciais descartáveis, e o `pull-request.yml` pode pular a revisão de dependências quando o Dependency graph estiver indisponível.
+
 ## Entrega contínua
 
 O workflow `cd.yml` constrói uma imagem multi-arquitetura (`linux/amd64` e `linux/arm64`) com Docker Buildx e publica no Docker Hub.
 
 | Gatilho | Publicação |
 | --- | --- |
-| `workflow_run` após a CI em `main` | `latest` e SHA curto |
-| Tag `v*.*.*` | Tags semânticas, como `v1.2.3` e `1.2` |
-| `workflow_dispatch` | Publicação manual |
+| `workflow_run` (após `CI`) | Toda vez que a CI termina com sucesso em `main` |
+| `push` de tag `v*.*.*` | Publica também as tags semânticas (`v1.2.3`, `1.2`) — crie a tag a partir de um commit que já esteja em `main` (e portanto já passou na CI) |
+| `workflow_dispatch` | Disparo manual pela aba Actions |
+
+Cada publicação recebe uma tag própria e imutável: `<versão do pom.xml>.<data>.<hora UTC>` (ex.: `1.1.1.20260911.230556`) — sem `latest`. Assim dá pra saber, só pela tag, exatamente qual código e qual build estão rodando em produção, e um redeploy nunca sobrescreve silenciosamente a tag que outra coisa possa estar usando.
+
+A imagem é multi-arquitetura (`linux/amd64` nativo em `ubuntu-latest` + `linux/arm64` nativo em `ubuntu-24.04-arm`, sem QEMU), então a mesma tag roda tanto em EC2 Intel/AMD quanto Graviton. O `Dockerfile` é multi-stage com o JAR extraído em camadas (`-Djarmode=tools extract --layers`) e roda como usuário não-root (`vidaconecta`). Cada arquitetura é escaneada com Trivy antes de publicar — CVE **CRITICAL** com correção disponível barra a publicação daquela perna, do mesmo jeito que o job de segurança da CI barra o SBOM.
 
 Configure no GitHub:
 
@@ -241,28 +255,49 @@ Configure no GitHub:
 
 Destino da imagem: `<DOCKERHUB_USERNAME>/vida-conecta-backend`.
 
+### Configurar o Docker Hub
+
+1. Crie um Access Token em *Docker Hub → Account Settings → Security*; não use a senha da conta.
+2. No repositório GitHub, cadastre `DOCKERHUB_USERNAME` como **Variable**.
+3. Cadastre `DOCKERHUB_TOKEN` como **Secret**.
+4. Garanta que o repositório de destino `<DOCKERHUB_USERNAME>/vida-conecta-backend` exista ou permita sua criação no primeiro push.
+
+O workflow publica uma tag imutável por build e também tags semânticas nas releases. O deploy de produção deve usar uma tag real publicada, nunca `latest`.
+
 ## Deploy no EC2
 
-Exemplo de execução da imagem publicada:
+Feito manualmente, uma única vez — deploys seguintes são automáticos (ver abaixo). Siga o cabeçalho do próprio `docker-compose.prod.yml`: certificado com certbot, `.env` a partir de `.env.prod.example` (preenchendo `BACKEND_IMAGE` com uma tag real publicada — veja as tags em `hub.docker.com/r/<usuario>/vida-conecta-backend/tags`, nunca `latest`), e `docker compose -f docker-compose.prod.yml up -d`.
+
+### Variáveis de produção
+
+Copie `.env.prod.example` para `.env` no mesmo diretório do Compose e aplique `chmod 600 .env`. Os valores principais são:
+
+| Variável | Finalidade |
+| --- | --- |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Credenciais do PostgreSQL |
+| `JWT_SECRET` | Segredo para assinatura dos tokens JWT |
+| `JWT_EXPIRATION_MINUTES` | Tempo de expiração do JWT |
+| `EHR_ENCRYPTION_KEY` | Chave Base64 de 32 bytes para cifrar o prontuário |
+| `CORS_ALLOWED_ORIGINS` | Origens permitidas para o frontend |
+| `FRONTEND_BASE_URL` | URL usada nos links de convite |
+| `SES_ENABLED`, `MAIL_FROM`, `AWS_REGION` | Configuração de envio de convites por SES |
+| `API_DOMAIN` | Domínio usado pelo Nginx e pelo certificado TLS |
+| `BACKEND_IMAGE` | Imagem e tag imutável publicadas no Docker Hub |
+| `GRAFANA_PORT`, `GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD` | Acesso ao Grafana |
+
+Para o primeiro setup, libere as portas 80 e 443 no Security Group, gere o certificado com Certbot e execute:
 
 ```bash
-docker pull <usuario>/vida-conecta-backend:latest
-
-docker run -d --name vida-conecta-api --restart unless-stopped -p 8080:8080 \
-  -e DATABASE_URL=jdbc:postgresql://<host-do-postgres>:5432/vida_conecta \
-  -e DATABASE_USERNAME=vida_conecta \
-  -e DATABASE_PASSWORD=<senha> \
-  -e JWT_SECRET=<segredo-de-producao> \
-  -e EHR_ENCRYPTION_KEY=<chave-base64-32-bytes> \
-  -e SES_ENABLED=true \
-  -e MAIL_FROM=<remetente-verificado> \
-  -e AWS_REGION=us-east-1 \
-  -e CORS_ALLOWED_ORIGINS=https://seu-frontend.exemplo \
-  -e FRONTEND_BASE_URL=https://seu-frontend.exemplo \
-  <usuario>/vida-conecta-backend:latest
+sudo certbot certonly --standalone -d api.seudominio.com
+cp .env.prod.example .env
+chmod 600 .env
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
 ```
 
-O `Dockerfile` usa build multi-stage e executa a aplicação com o usuário não-root `vidaconecta`. A publicação da imagem não automatiza o restart no EC2; essa etapa pode ser feita posteriormente via SSM ou SSH.
+### Stack de produção
+
+O `docker-compose.prod.yml` executa PostgreSQL, API, Nginx com TLS, Prometheus, Grafana, exporter do PostgreSQL e backup automático. O health check da API fica disponível em `https://<API_DOMAIN>/actuator/health`; o Grafana usa a porta configurada em `GRAFANA_PORT` e deve ser restrito no Security Group.
 
 ## Segurança e observações
 
@@ -273,3 +308,36 @@ O `Dockerfile` usa build multi-stage e executa a aplicação com o usuário não
 - O banco transacional e o storage clínico devem usar criptografia em repouso e backups.
 - A mídia WebRTC não é armazenada pelo backend.
 - O primeiro administrador usa um token UUID de bootstrap armazenado em `admin_bootstrap_tokens`; após o uso, o token é substituído.
+
+### Deploy automático após a publicação
+
+Depois do `publish`, o `cd.yml` roda um job `deploy` que atualiza o serviço `api` no EC2 — via **AWS Systems Manager (SSM) Run Command**, sem SSH exposto à internet e sem chave privada guardada em Secret. O GitHub Actions assume uma IAM role via OIDC (nenhuma credencial de longa duração fica no repositório).
+
+O job faz duas coisas na instância, nessa ordem:
+
+1. Escreve o `docker-compose.prod.yml` do commit publicado no diretório da instância — o arquivo na EC2 nunca fica desatualizado em relação ao que está em `main`.
+2. Roda `deploy/ec2-deploy.sh`, que faz `docker compose pull api && docker compose up -d api`.
+
+Como o Compose só recria um serviço quando a configuração dele muda, **Postgres, Nginx e a stack de observabilidade (Prometheus, Grafana, exporter, backup) nunca são tocados** por um deploy — só a imagem da API muda entre uma execução e outra. O `.env` da instância (com os segredos reais) nunca é sobrescrito por esse processo: **nenhum segredo passa pelo GitHub Actions nem pelo histórico do SSM**.
+
+Pré-requisitos na conta AWS (feitos uma vez):
+
+1. **IAM role na instância EC2**, com a policy gerenciada `AmazonSSMManagedInstanceCore` (para o SSM Agent se registrar) — anexada em *EC2 → instância → Security → Modify IAM role*.
+2. **Provedor OIDC do GitHub** (`token.actions.githubusercontent.com`) configurado em *IAM → Identity providers*.
+3. **Uma IAM role assumível pelo GitHub Actions**, com trust policy restrita a este repositório e branch (`repo:iagobcosta/vida-conecta-backend:ref:refs/heads/main`) e permissão de `ssm:SendCommand` restrita à instância específica, mais `ssm:GetCommandInvocation`/`ssm:ListCommandInvocations`.
+4. **`docker-compose.prod.yml`, `.env` (a partir de `.env.prod.example`) e as pastas `nginx/`/`observability/` já colocadas manualmente no diretório da instância** — o pipeline só mantém o `docker-compose.prod.yml` sincronizado a cada deploy, o resto é setup único.
+
+Depois disso, quatro **Variables** no repositório (*Settings → Secrets and variables → Actions → Variables* — nenhuma é segredo, a ARN da role não concede nada sozinha, quem autoriza é a trust policy):
+
+| Variable | Exemplo |
+| --- | --- |
+| `AWS_ROLE_ARN` | `arn:aws:iam::<account-id>:role/<nome-da-role>` |
+| `AWS_REGION` | `us-east-2` |
+| `EC2_INSTANCE_ID` | `i-xxxxxxxxxxxxxxxxx` |
+| `EC2_COMPOSE_DIR` | `/home/ubuntu` — diretório na instância onde ficam o `docker-compose.prod.yml`, o `.env` e as pastas `nginx/`/`observability/` |
+
+Para reproduzir o script de deploy localmente (contra um `docker-compose.prod.yml` de teste, não a instância real):
+
+```bash
+DEPLOY_IMAGE=<imagem>:<tag> DEPLOY_COMPOSE_DIR=<diretório-com-o-compose-e-o-.env> bash deploy/ec2-deploy.sh
+```

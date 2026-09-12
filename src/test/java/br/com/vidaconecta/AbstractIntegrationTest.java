@@ -7,6 +7,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jayway.jsonpath.JsonPath;
 import java.nio.charset.StandardCharsets;
 import java.time.DayOfWeek;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -117,6 +120,17 @@ public abstract class AbstractIntegrationTest {
 				.andExpect(status().isCreated())
 				.andReturn();
 		return tokenFrom(result);
+	}
+
+	private static final ZoneId CLINIC_ZONE = ZoneId.of("America/Sao_Paulo");
+
+	// 10h do dia seguinte: `Instant.now() + N horas` é flaky perto da virada do
+	// dia, já que `openClinicHours` abre 00:00–23:59 por dia, sem continuidade
+	// entre um dia e o próximo. Use isso sempre que o teste não precisar que o
+	// horário fique "logo" (perto do agora real) — ex.: janela de entrada na
+	// videochamada, que compara com `Instant.now()` no próprio servidor.
+	protected static Instant horarioSeguro() {
+		return LocalDate.now(CLINIC_ZONE).plusDays(1).atTime(10, 0).atZone(CLINIC_ZONE).toInstant();
 	}
 
 	protected void openClinicHours(String doctorToken) throws Exception {
