@@ -56,7 +56,7 @@ jobs:
     steps:
       - name: Verificar suporte ao Dependency graph
         id: dependency_graph
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             try {
