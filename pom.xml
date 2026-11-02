@@ -35,7 +35,7 @@
 		     e CVE-2026-68525 (bypass de autenticação/autorização) só têm correção
 		     a partir do 11.0.25. Remover quando o parent alcançar essa versão. -->
 		<tomcat.version>11.0.25</tomcat.version>
-		<jacoco.version>0.8.15</jacoco.version>
+		<jacoco.version>0.8.16</jacoco.version>
 		<cyclonedx.version>2.9.3</cyclonedx.version>
 		<!-- Cobertura mínima de linhas exigida por jacoco:check. A CI sobrescreve com -Djacoco.line.minimum=... -->
 		<jacoco.line.minimum>0.00</jacoco.line.minimum>
